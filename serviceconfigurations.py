@@ -27,6 +27,9 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+import paramiko
+import ftplib
+
 SCRIPT_PATH = r"C:\Users\GaneshKumarLenka\Downloads\suppression_automation"
 LOG_PATH = r"C:\Users\GaneshKumarLenka\Downloads\suppression_automation\app_logs"
 PID_FILE = SCRIPT_PATH + "/app.pid"
@@ -34,7 +37,7 @@ LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
 
-count = 20  # thread count
+THREAD_COUNT = 20  # thread count
 
 skype_configurations = {
     'url': 'http://zds-prod-ext-greenapp1-vip.bo3.e-dialog.com/sendSkypeAlerts/index.php?key=',
@@ -48,7 +51,7 @@ skype_configurations = {
 
 # GLOBAL_VARIABLES
 
-mysql_source_configs = {
+MYSQL_CONFIGS = {
     "host": "10.218.18.157",
     "user": "smartuser",
     "password": "smart12#$",
@@ -75,11 +78,11 @@ SNOWFLAKE_CONFIGS = {
     "schema": 'INFS_LPT'
 }
 
-
+STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
 SOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_MAPPING_'
 MAIN_DATASOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_'
 
-operator_mapping = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<',
+OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<',
                     'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
                     'not exists in': 'not in', 'predefined daterange': '>='}
 
@@ -87,229 +90,8 @@ FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 SUBJECT = "PROXY TESTING REPORT"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-TABLE_NAME=""
-stage_name=""
-sf_delete_old_details_query="delete from SOURCE_TABLE where filename in (FILES)"
-fetch_last_iteration_file_details_query = "select filename,last_modified_time,size,count from x" # get last iteration files data
-last_successfull_run_number_query=""
-run_number_query = "select runNumber from SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=REQUEST_ID"  # query to fetch run number
+SF_DELETE_OLD_DETAILS_QUERY = "delete from SOURCE_TABLE where filename in (FILES)"
+FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count from x"  # get last iteration files data
+LAST_SUCCESSFULL_RUN_NUMBER_QUERY = ""
+RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=REQUEST_ID"  # query to fetch run number
 file_path = "/suppression/shyam/"  # local file path - mount to download the temp files
-import paramiko
-import ftplib
-
