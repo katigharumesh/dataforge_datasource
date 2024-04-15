@@ -28,10 +28,10 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
         sf_cursor = sf_conn.cursor()
         source_table = SOURCE_TABLE_PREFIX + str(data_source_mapping_id)
         if source_type == "F":
-            if source_sub_type == "S":
-                pass
+            if source_sub_type == "S" or source_sub_type == "N":
+                process_sftp_ftp_nfs_request(source_sub_type, hostname, port, username, password, input_data_dict,mysql_cursor,consumer_logger, data_source_mapping_id)
             elif source_sub_type == "N":
-                pass
+                process_sftp_ftp_nfs_request(source_sub_type,inputData_dict=input_data_dict,mysql_cursor=mysql_cursor,consumer_logger=consumer_logger, id=data_source_mapping_id)
             elif source_sub_type == "A":
                 pass
             elif source_sub_type == "D":
@@ -246,8 +246,7 @@ class LocalFileTransfer:
             return None
 
 
-def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,
-                                 consumer_logger, id):
+def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,consumer_logger, id):
     try:
         if sourcesubtype == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -278,23 +277,32 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
-
+        table_name = SOURCE_TABLE_PREFIX + "_" + str(id) + "_" + str(run_number)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         if run_number == 1:
             header_list = inputData_dict['headerValue'].split(",")
-            sf_create_table_query = f"create or replace transient table if not exists {SOURCE_TABLE_PREFIX + TABLE_NAME}  ( "
+
+            sf_create_table_query = f"create or replace transient table if not exists {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , filename varchar )"
         else:
-            sf_create_table_query = f"create or replace transient table if not exists {SOURCE_TABLE_PREFIX + TABLE_NAME}  clone {SOURCE_TABLE_PREFIX + TABLE_NAME + str(last_successfull_run_number)} "
+            last_run_table_name = SOURCE_TABLE_PREFIX + "_" + str(id) + "_" + str(last_successful_run_number)
+            sf_create_table_query = f"create or replace transient table if not exists {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)
 
         if isFile:
             file_details_list = []
             file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
-                                                    inputData_dict)
+                                                    inputData_dict,table_name)
+            # add logic to insert the file details into table
+            fileName = file_details_dict["name"]
+            count = file_details_dict["count"]
+            size = file_details_dict["size"]
+            last_modified_time = file_details_dict["last_modified_time"]
+            insert_file_details_query=f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={id}"
+            mysql_cursor.execute(insert_file_details_query)
             file_details_list.append(file_details_dict)
 
         elif isDir:
@@ -308,21 +316,26 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
 
             print(SF_DELETE_OLD_DETAILS_QUERY)
-            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE",
-                                                                               SOURCE_TABLE_PREFIX + TABLE_NAME).replace(
-                "FILE", to_delete_mysql_formatted)
-            sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY)
+            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE",table_name).replace("FILE", to_delete_mysql_formatted)
+            sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
             # run delete query to remove old files
 
             file_details_list = []
             consumer_logger.info("First time dump processing all the files..")
             for file in files_list:
                 fully_qualified_file = inputData_dict["filePath"] + file
-                file_details_dict = process_single_file(ftpObj, fully_qualified_file)
+                file_details_dict = process_single_file(ftpObj, fully_qualified_file,consumer_logger,table_name,last_iteration_files_details)
+                fileName = file_details_dict["name"]
+                count = file_details_dict["count"]
+                size = file_details_dict["size"]
+                last_modified_time = file_details_dict["last_modified_time"]
+                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={id}"
+                mysql_cursor.execute(insert_file_details_query)
                 file_details_list.append(file_details_dict)
 
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
+            raise Exception("Wrong Input...raising Exception..")
 
     except Exception as e:
         print(f"Except occurred. Please look into it. {str(e)}")
@@ -331,7 +344,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
 
 
 def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logger, inputData_dict,
-                        last_iteration_files_details=[]):
+                        table_name, last_iteration_files_details=[]):
     try:
         file_details_dict = {}
         isOldFile = False
@@ -359,7 +372,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
-
+        stage_name=STAGE_TABLE_PREFIX+"_"+str(id)+"_"+str(run_number)
         if inputData_dict['isHeaderExists'] == 0:
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' )  ; PUT file://{file_path}/{file} @{stage_name} ;"
@@ -373,9 +386,9 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
 
         if isOldFile:
-            SF_DELETE_OLD_DETAILS_QUERY = f"delete from {SOURCE_TABLE_PREFIX + TABLE_NAME} where filename = '{file}'"
+            SF_DELETE_OLD_DETAILS_QUERY = f"delete from {table_name} where filename = '{file}'"
             sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY)
-        sf_copy_into_query = f"copy into {SOURCE_TABLE_PREFIX + TABLE_NAME} FROM (select {stage_columns}, '{file}' FROM @stage_name ) "
+        sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @stage_name ) "
         consumer_logger.info(f"Executing query: {sf_copy_into_query}")
         sf_cursor.execute(sf_copy_into_query)
         return file_details_dict

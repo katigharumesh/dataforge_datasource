@@ -45,8 +45,8 @@ def load_data_sources_consumer(sources_queue, run_number, main_datasource_detail
         print("Consumer exiting")
     except Exception as e:
         print(f"Exception occurred: {str(e)}")
-        # update status to errored
-        consumer_logger.error()
+        # update status to errorred
+        consumer_logger.error(f"Exception occurred: {str(e)}")
 
 
 # Main function
