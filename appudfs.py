@@ -386,12 +386,15 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         stage_name=STAGE_TABLE_PREFIX+table_name+"_"+str(run_number)
         if inputData_dict['isHeaderExists'] == 'true':
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' )  ; PUT file://{file_path}/{file} @{stage_name} ;"
+            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' ) "
         else:
             consumer_logger.info("Header available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1)  ; PUT file://{file_path}/{file} @{stage_name} ;"
+            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
+        sf_put_file_stage_query=f" PUT file://{file_path}/{file} @{stage_name} "
+        consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
+        sf_cursor.execute(sf_put_file_stage_query)
         field_delimiter = inputData_dict['delimiter']
         header_list = inputData_dict['headerValue'].split(str(field_delimiter))
         stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
