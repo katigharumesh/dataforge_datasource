@@ -35,11 +35,13 @@ def load_data_source(source, main_datasource_details, consumer_logger):
         source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + str(data_source_mapping_id) + str(run_number)
         if source_type == "F":
             if source_sub_type == "S" or source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type, hostname, int(port), username, password, input_data_dict,
+                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, hostname, int(port), username, password, input_data_dict,
                                              mysql_cursor, consumer_logger, data_source_mapping_id)
+                return source_table
             elif source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type, inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
+                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
                                              consumer_logger=consumer_logger, request_id=data_source_mapping_id)
+                return source_table
             elif source_sub_type == "A":
                 pass
             elif source_sub_type == "D":
@@ -259,7 +261,7 @@ class LocalFileTransfer:
             return None
 
 
-def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,
+def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,
                                  consumer_logger, request_id):
     try:
         if sourcesubtype == "S":
@@ -282,19 +284,18 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         consumer_logger.info(f"Fetching runNumber from table... ")
         consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id))}")
         mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id)))
-        run_number = mysql_cursor.fetchone()['runNumber']
-        consumer_logger.info(f"Fetched runNumber is {str(run_number)}")
+
         last_successful_run_number = 0
         # mysql_cursor.execute(last_successful_run_number_query)
 
         last_iteration_files_details = []
         if run_number != 0:
-            mysql_cursor.execute(LAST_SUCCESSFULL_RUN_NUMBER_QUERY)
+            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',data_source_id))
             last_successful_run_number = int(mysql_cursor.fetchone()[0])
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
-        table_name = SOURCE_TABLE_PREFIX + str(request_id) + "_" + str(run_number)
+        table_name = source_table
         consumer_logger.info(f"Table name for this DataSource is : {table_name}")
         consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -321,7 +322,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             count = file_details_dict["count"]
             size = file_details_dict["size"]
             last_modified_time = file_details_dict["last_modified_time"]
-            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
+            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
             mysql_cursor.execute(insert_file_details_query)
             file_details_list.append(file_details_dict)
 
@@ -351,18 +352,22 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
+                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
                 mysql_cursor.execute(insert_file_details_query)
                 file_details_list.append(file_details_dict)
 
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
             raise Exception("Wrong Input...raising Exception..")
-
+        return table_name
     except Exception as e:
         print(f"Except occurred. Please look into it. {str(e)}")
         consumer_logger.info(f"Except occurred. Please look into it. {str(e)}")
         raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 
 def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logger, inputData_dict,
@@ -385,8 +390,8 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
 
-        ftpObj.download_file(fully_qualified_file, file_path + "/" + file)
-        line_count = sum(1 for _ in open(file_path + file, 'r'))
+        ftpObj.download_file(fully_qualified_file, FILE_PATH + file)
+        line_count = sum(1 for _ in open(FILE_PATH + file, 'r'))
         file_details_dict["name"] = file
         file_details_dict["count"] = line_count
         file_details_dict["size"] = meta_data["size"]
@@ -404,7 +409,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
-        sf_put_file_stage_query = f" PUT file://{file_path}/{file} @{stage_name} "
+        sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "
         consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
         sf_cursor.execute(sf_put_file_stage_query)
         field_delimiter = inputData_dict['delimiter']
