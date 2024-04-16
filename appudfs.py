@@ -373,7 +373,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
 
-        ftpObj.download_file(fully_qualified_file, file_path+file)
+        ftpObj.download_file(fully_qualified_file, file_path+"/"+file)
         line_count = sum(1 for _ in open(file_path + file, 'r'))
         file_details_dict["name"] = file
         file_details_dict["count"] = line_count
