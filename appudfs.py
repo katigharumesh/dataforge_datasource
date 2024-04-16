@@ -32,7 +32,7 @@ def load_data_source(source, main_datasource_details, consumer_logger):
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection established Successfully....")
 
-        source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + str(data_source_mapping_id) + str(run_number)
+        source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
         if source_type == "F":
             if source_sub_type == "S" or source_sub_type == "N":
                 source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, hostname, int(port), username, password, input_data_dict,
@@ -87,12 +87,12 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                             join_fields = 'a.email=b.email'
                     where_conditions.append(
                         f" {filter['fieldName']} {OPERATOR_MAPPING[filter['searchType']]} {filter['value']} ")
-
-                sf_cursor.execute(
-                    f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} "
-                    f"as select {main_datasource_details['FilterMatchFields']} from "
-                    f"{sf_data_source}  where"
-                    f" {' and '.join(where_conditions)} ")
+                source_table_preparation_query = f"create or replace transient table " \
+                                                 f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
+                                                 f"as select {main_datasource_details['FilterMatchFields']} " \
+                                                 f"from {sf_data_source} where {' and '.join(where_conditions)} "
+                print("Source table preparation query: " + source_table_preparation_query)
+                sf_cursor.execute(source_table_preparation_query)
                 if touch_filter:
                     sf_cursor.execute(
                         f"delete from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} a "
@@ -107,7 +107,7 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                 return source_table
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
-            raise Exception("Unknown source_sub_type selected")
+                raise Exception("Unknown source_sub_type selected")
         else:
             consumer_logger.info("Unknown source_type selected")
             raise Exception("Unknown source_type selected")
@@ -144,8 +144,8 @@ def create_main_datasource(sources_loaded, main_datasource_details):
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + str(run_number)
-        temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + str(run_number) + "_TEMP"
+        main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
+        temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
