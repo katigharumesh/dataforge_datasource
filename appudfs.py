@@ -290,7 +290,8 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection acquired successfully")
         if run_number == 0:
-            header_list = inputData_dict['headerValue'].split(",")
+            field_delimiter = inputData_dict['delimiter']
+            header_list = inputData_dict['headerValue'].split(field_delimiter)
 
             sf_create_table_query = f"create or replace transient table if not exists {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
