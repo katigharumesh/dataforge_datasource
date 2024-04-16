@@ -15,6 +15,7 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
     main_logger.info(f"executing query: {FETCH_SOURCE_DETAILS.replace('REQUEST_ID', request_id)}")
     mysql_cursor.execute(FETCH_SOURCE_DETAILS.replace("REQUEST_ID", request_id))
     data_sources = mysql_cursor.fetchall()
+    main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
     for source in data_sources:
         sources_queue.put(source)
     main_logger.info(f"Producer finished producing tasks")
@@ -36,10 +37,12 @@ def load_data_sources_consumer(sources_queue, run_number, main_datasource_detail
                 while sources_queue.empty():  # Wait for tasks to be available in the queue
                     queue_empty_condition.wait()
                 source = sources_queue.get()  # Get task from the queue
+                consumer_logger.info(str(source))
             if source is None:  # Sentinel value indicating end of tasks
                 consumer_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                 break
-            sources_loaded += load_data_source(source, run_number, main_datasource_details, consumer_logger)
+            consumer_logger.info("Calling function ... load_data_source")
+            load_data_source(source, run_number, main_datasource_details, consumer_logger)
             sources_queue.task_done()  # Notify the queue that the task is done
         consumer_logger.info(f"Consumer exiting")
         print("Consumer exiting")
@@ -67,9 +70,7 @@ def main(request_id, run_number):
     sources_queue = queue.Queue()
     queue_empty_condition = threading.Condition()
     # Preparing individuals tables for given data sources
-    producer_thread = threading.Thread(target=load_data_sources_producer,
-                                       args=(
-                                       sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
+    producer_thread = threading.Thread(target=load_data_sources_producer, args=(sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
     producer_thread.start()
     # Create and start consumer threads
     consumer_threads = []
@@ -96,7 +97,7 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "7"
+        request_id = "4"
         run_number = "1"
         if len(sys.argv) > 1:
             request_id = sys.argv[1]
@@ -105,3 +106,4 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}")
+        exit_program(-1)

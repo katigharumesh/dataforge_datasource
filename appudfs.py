@@ -19,17 +19,20 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
         sf_query = source['sfQuery']
         source_type = source['sourceType']
         source_sub_type = source['sourceSubType']
-        input_data_dict = json.loads(input_data)
+        input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
+        consumer_logger.info("Mysql Connection established successfully...")
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
+        consumer_logger.info("Snowflake connection established Successfully....")
+
         source_table = SOURCE_TABLE_PREFIX + str(data_source_mapping_id)
         if source_type == "F":
             if source_sub_type == "S" or source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type, hostname, port, username, password, input_data_dict,mysql_cursor,consumer_logger, data_source_mapping_id)
+                process_sftp_ftp_nfs_request(source_sub_type, hostname, int(port), username, password, input_data_dict,mysql_cursor,consumer_logger, data_source_mapping_id)
             elif source_sub_type == "N":
                 process_sftp_ftp_nfs_request(source_sub_type,inputData_dict=input_data_dict,mysql_cursor=mysql_cursor,consumer_logger=consumer_logger, id=data_source_mapping_id)
             elif source_sub_type == "A":
@@ -109,7 +112,7 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
             sf_conn.close()
 
 
-def create_main_datasource(request_id, main_datasource_details, sources_loaded):
+def create_main_datasource(request_id, main_datasource_details, sources_loaded, run_number):
     try:
         datasource_id = main_datasource_details['id']
         channel_name = main_datasource_details['channelName']
@@ -265,8 +268,11 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         isDir = True if inputData_dict["filePath"].endswith("/") else False
 
         result = {}
-        mysql_cursor.execute(RUN_NUMBER_QUERY.replace("REQUEST_ID", id))
-        run_number = int(mysql_cursor.fetchone()[0])
+        consumer_logger.info(f"Fetching runNumber from table... ")
+        consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(id))}")
+        mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(id)))
+        run_number = mysql_cursor.fetchone()['runNumber']
+        consumer_logger.info(f"Fetched runNumber is {str(run_number)}")
         last_successful_run_number = 0
         # mysql_cursor.execute(last_successful_run_number_query)
 
@@ -278,8 +284,11 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
         table_name = SOURCE_TABLE_PREFIX + "_" + str(id) + "_" + str(run_number)
+        consumer_logger.info(f"Table name for this DataSource is : {table_name}")
+        consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
+        consumer_logger.info("Snowflake connection acquired successfully")
         if run_number == 1:
             header_list = inputData_dict['headerValue'].split(",")
 
@@ -316,7 +325,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
 
             print(SF_DELETE_OLD_DETAILS_QUERY)
-            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE",table_name).replace("FILE", to_delete_mysql_formatted)
+            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace("FILE", to_delete_mysql_formatted)
             sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
             # run delete query to remove old files
 
