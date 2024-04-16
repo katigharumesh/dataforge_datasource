@@ -30,8 +30,8 @@ from email.mime.multipart import MIMEMultipart
 import paramiko
 import ftplib
 
-SCRIPT_PATH = r"C:\Users\GaneshKumarLenka\Downloads\suppression_automation"
-LOG_PATH = r"C:\Users\GaneshKumarLenka\Downloads\suppression_automation\app_logs"
+SCRIPT_PATH = r"E:\tmp\data_forge"
+LOG_PATH = r"E:\tmp\data_forge\app_logs"
 PID_FILE = SCRIPT_PATH + "/app.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 

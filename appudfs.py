@@ -277,7 +277,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         # mysql_cursor.execute(last_successful_run_number_query)
 
         last_iteration_files_details = []
-        if run_number != 1:
+        if run_number != 0:
             mysql_cursor.execute(LAST_SUCCESSFULL_RUN_NUMBER_QUERY)
             last_successful_run_number = int(mysql_cursor.fetchone()[0])
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
@@ -289,7 +289,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection acquired successfully")
-        if run_number == 1:
+        if run_number == 0:
             header_list = inputData_dict['headerValue'].split(",")
 
             sf_create_table_query = f"create or replace transient table if not exists {table_name}  ( "
@@ -360,7 +360,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
         meta_data = ftpObj.get_file_metadata(fully_qualified_file)  # metadata from ftp
-        if run_number != 1:
+        if run_number != 0:
             if file in [i['filename'] for i in last_iteration_files_details]:
                 isOldFile = True
                 file_index = [i['filename'] for i in last_iteration_files_details].index(file)
@@ -382,7 +382,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
         stage_name=STAGE_TABLE_PREFIX+"_"+str(id)+"_"+str(run_number)
-        if inputData_dict['isHeaderExists'] == 0:
+        if inputData_dict['isHeaderExists'] == 'true':
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' )  ; PUT file://{file_path}/{file} @{stage_name} ;"
         else:
