@@ -252,8 +252,8 @@ class LocalFileTransfer:
 
     def get_file_metadata(self, file_path):
         try:
-            full_path = os.path.join(self.mount_path, file_path)
-            file_stat = os.stat(full_path)
+            #full_path = os.path.join(self.mount_path, file_path)
+            file_stat = os.stat(file_path)
             metadata = {
                 'size': file_stat.st_size,
                 'last_modified': file_stat.st_mtime
