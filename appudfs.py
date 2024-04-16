@@ -1,3 +1,4 @@
+
 from serviceconfigurations import *
 
 
@@ -34,7 +35,7 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
             if source_sub_type == "S" or source_sub_type == "N":
                 process_sftp_ftp_nfs_request(source_sub_type, hostname, int(port), username, password, input_data_dict,mysql_cursor,consumer_logger, data_source_mapping_id)
             elif source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type,inputData_dict=input_data_dict,mysql_cursor=mysql_cursor,consumer_logger=consumer_logger, id=data_source_mapping_id)
+                process_sftp_ftp_nfs_request(source_sub_type,inputData_dict=input_data_dict,mysql_cursor=mysql_cursor,consumer_logger=consumer_logger, request_id=data_source_mapping_id)
             elif source_sub_type == "A":
                 pass
             elif source_sub_type == "D":
@@ -249,7 +250,7 @@ class LocalFileTransfer:
             return None
 
 
-def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,consumer_logger, id):
+def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,consumer_logger, request_id):
     try:
         if sourcesubtype == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -269,8 +270,8 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
 
         result = {}
         consumer_logger.info(f"Fetching runNumber from table... ")
-        consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(id))}")
-        mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(id)))
+        consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id))}")
+        mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id)))
         run_number = mysql_cursor.fetchone()['runNumber']
         consumer_logger.info(f"Fetched runNumber is {str(run_number)}")
         last_successful_run_number = 0
@@ -283,7 +284,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
-        table_name = SOURCE_TABLE_PREFIX + str(id) + "_" + str(run_number)
+        table_name = SOURCE_TABLE_PREFIX + str(request_id) + "_" + str(run_number)
         consumer_logger.info(f"Table name for this DataSource is : {table_name}")
         consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -296,7 +297,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , filename varchar )"
         else:
-            last_run_table_name = SOURCE_TABLE_PREFIX + str(id) + "_" + str(last_successful_run_number)
+            last_run_table_name = SOURCE_TABLE_PREFIX + str(request_id) + "_" + str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table if not exists {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)
@@ -310,7 +311,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             count = file_details_dict["count"]
             size = file_details_dict["size"]
             last_modified_time = file_details_dict["last_modified_time"]
-            insert_file_details_query=f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={id}"
+            insert_file_details_query=f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
             mysql_cursor.execute(insert_file_details_query)
             file_details_list.append(file_details_dict)
 
@@ -338,7 +339,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={id}"
+                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
                 mysql_cursor.execute(insert_file_details_query)
                 file_details_list.append(file_details_dict)
 
@@ -360,6 +361,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
         meta_data = ftpObj.get_file_metadata(fully_qualified_file)  # metadata from ftp
+        consumer_logger.info(f"Meta data fetched successfully : {meta_data}")
         if run_number != 0:
             if file in [i['filename'] for i in last_iteration_files_details]:
                 isOldFile = True
@@ -371,7 +373,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
 
-        ftpObj.download_file(fully_qualified_file, file_path)
+        ftpObj.download_file(fully_qualified_file, file_path+file)
         line_count = sum(1 for _ in open(file_path + file, 'r'))
         file_details_dict["name"] = file
         file_details_dict["count"] = line_count
@@ -381,7 +383,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
-        stage_name=STAGE_TABLE_PREFIX+"_"+str(id)+"_"+str(run_number)
+        stage_name=STAGE_TABLE_PREFIX+table_name+"_"+str(run_number)
         if inputData_dict['isHeaderExists'] == 'true':
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' )  ; PUT file://{file_path}/{file} @{stage_name} ;"
@@ -390,8 +392,8 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1)  ; PUT file://{file_path}/{file} @{stage_name} ;"
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
-
-        header_list = inputData_dict['headerValue'].split(",")
+        field_delimiter = inputData_dict['delimiter']
+        header_list = inputData_dict['headerValue'].split(str(field_delimiter))
         stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
 
         if isOldFile:
