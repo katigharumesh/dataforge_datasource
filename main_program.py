@@ -29,7 +29,7 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
 
 
 # Consumer thread function
-def load_data_sources_consumer(sources_queue, run_number, main_datasource_details, queue_empty_condition,
+def load_data_sources_consumer(sources_queue, main_datasource_details, queue_empty_condition,
                                consumer_logger):
     try:
         consumer_logger.info(f"Consumer execution started: {time.ctime()}")
@@ -43,13 +43,13 @@ def load_data_sources_consumer(sources_queue, run_number, main_datasource_detail
                 consumer_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                 break
             consumer_logger.info("Calling function ... load_data_source")
-            load_data_source(source, run_number, main_datasource_details, consumer_logger)
+            sources_loaded.append(load_data_source(source, main_datasource_details, consumer_logger))
             sources_queue.task_done()  # Notify the queue that the task is done
         consumer_logger.info(f"Consumer exiting")
         print("Consumer exiting")
     except Exception as e:
         print(f"Exception occurred: {str(e)}")
-        # update status to errorred
+        # update status to error
         consumer_logger.error(f"Exception occurred: {str(e)}")
 
 
@@ -66,19 +66,20 @@ def main(request_id, run_number):
     delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
     mysql_cursor = mysql_conn.cursor(dictionary=True)
-    mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS.replace("REQUEST_ID", request_id))
+    mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS.replace("REQUEST_ID", request_id).replace("RUN_NUMBER", run_number))
     main_datasource_details = mysql_cursor.fetchone()
     sources_queue = queue.Queue()
     queue_empty_condition = threading.Condition()
     # Preparing individuals tables for given data sources
-    producer_thread = threading.Thread(target=load_data_sources_producer, args=(sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
+    producer_thread = threading.Thread(target=load_data_sources_producer, args=
+    (sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
     producer_thread.start()
     # Create and start consumer threads
     consumer_threads = []
     for i in range(THREAD_COUNT):
         consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
         consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
-            sources_queue, run_number, main_datasource_details, queue_empty_condition, consumer_logger))
+            sources_queue, main_datasource_details, queue_empty_condition, consumer_logger))
         consumer_thread.start()
         consumer_threads.append(consumer_thread)
     # Wait for producer thread to finish
@@ -91,21 +92,20 @@ def main(request_id, run_number):
     print("All sources are processed")
     end_time = time.time()
     # Preparing request level main_datasource
-    create_main_datasource(sources_loaded, main_datasource_details, request_id, run_number)
-    main_logger.info(f"Script execution ended : {time.strftime('%H:%M:%S')} epoch time: {end_time}")
+    create_main_datasource(sources_loaded, main_datasource_details)
+    main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
     exit_program(0)
 
 
 if __name__ == "__main__":
     try:
-        request_id = "4"
-        run_number = "1"
+        request_id = "7"
+        run_number = "2"
         if len(sys.argv) > 1:
-            request_id = sys.argv[1]
-            run_number = sys.argv[2]
+            request_id = str(sys.argv[1])
+            run_number = str(sys.argv[2])
         main(request_id, run_number)
 
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}")
         exit_program(-1)
-

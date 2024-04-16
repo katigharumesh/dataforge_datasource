@@ -1,14 +1,14 @@
-
 from serviceconfigurations import *
 
 
-def load_data_source(source, run_number, main_datasource_details, consumer_logger):
+def load_data_source(source, main_datasource_details, consumer_logger):
     try:
-        consumer_logger.info(f"Processing task : {str(source)}")
+        consumer_logger.info(f"Processing task: {str(source)}")
         data_source_mapping_id = source['id']
         data_source_id = source['dataSourceId']
         source_id = source['sourceId']
         input_data = source['inputData']
+        sf_source_name = source['name']
         hostname = source['hostname']
         port = source['port']
         username = source['username']
@@ -20,6 +20,8 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
         sf_query = source['sfQuery']
         source_type = source['sourceType']
         source_sub_type = source['sourceSubType']
+        data_source_schedule_id = main_datasource_details['dataSourceScheduleId']
+        run_number = main_datasource_details['runNumber']
         input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -30,12 +32,14 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection established Successfully....")
 
-        source_table = SOURCE_TABLE_PREFIX + str(data_source_mapping_id)
+        source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + str(data_source_mapping_id) + str(run_number)
         if source_type == "F":
             if source_sub_type == "S" or source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type, hostname, int(port), username, password, input_data_dict,mysql_cursor,consumer_logger, data_source_mapping_id)
+                process_sftp_ftp_nfs_request(source_sub_type, hostname, int(port), username, password, input_data_dict,
+                                             mysql_cursor, consumer_logger, data_source_mapping_id)
             elif source_sub_type == "N":
-                process_sftp_ftp_nfs_request(source_sub_type,inputData_dict=input_data_dict,mysql_cursor=mysql_cursor,consumer_logger=consumer_logger, request_id=data_source_mapping_id)
+                process_sftp_ftp_nfs_request(source_sub_type, inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
+                                             consumer_logger=consumer_logger, request_id=data_source_mapping_id)
             elif source_sub_type == "A":
                 pass
             elif source_sub_type == "D":
@@ -49,7 +53,7 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
                 raise Exception("Snowflake account mismatch. Pending implementation ...")
             if source_sub_type in ('R', 'D', 'P', 'M', 'J'):
                 if sf_table is not None:
-                    sf_data_source = sf_table
+                    sf_data_source = f"{sf_database}.{sf_schema}.{sf_table}"
                 else:
                     sf_data_source = "(" + sf_query + ")"
                 where_conditions = []
@@ -85,7 +89,7 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
                 sf_cursor.execute(
                     f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} "
                     f"as select {main_datasource_details['FilterMatchFields']} from "
-                    f"{sf_database}.{sf_schema}.{sf_data_source}  where"
+                    f"{sf_data_source}  where"
                     f" {' and '.join(where_conditions)} ")
                 if touch_filter:
                     sf_cursor.execute(
@@ -93,6 +97,11 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
                         f"using (select {grouping_fields} from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
                         f" group by {grouping_fields} having count(1)< {touch_count}) b "
                         f"where {join_fields}")
+                sf_cursor.execute(
+                    f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
+                records_count = sf_cursor.fetchone()[0]
+                mysql_cursor.execute(INSERT_FILE_DETAILS, (
+                    data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name))
                 return source_table
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
@@ -102,7 +111,7 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
             raise Exception("Unknown source_type selected")
 
     except Exception as e:
-        print(f"Exception occurred: Please look into this. {str(e)}")
+        print(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
         raise Exception(f"Exception occurred: Please look into this. {str(e)}")
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
@@ -113,15 +122,16 @@ def load_data_source(source, run_number, main_datasource_details, consumer_logge
             sf_conn.close()
 
 
-def create_main_datasource(request_id, main_datasource_details, sources_loaded, run_number):
+def create_main_datasource(sources_loaded, main_datasource_details):
     try:
-        datasource_id = main_datasource_details['id']
+        data_source_id = main_datasource_details['id']
         channel_name = main_datasource_details['channelName']
         user_group_id = main_datasource_details['userGroupId']
         feed_type = main_datasource_details['feedType']
         data_processing_type = main_datasource_details['dataProcessingType']
         filter_match_fields = main_datasource_details['FilterMatchFields']
         isps = main_datasource_details['isps']
+        run_number = main_datasource_details['runNumber']
 
         if data_processing_type == 'K':
             sf_data_source = f"select * from {' intersect select * from '.join(sources_loaded)}"
@@ -132,22 +142,21 @@ def create_main_datasource(request_id, main_datasource_details, sources_loaded, 
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + request_id
-        temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + request_id + "_TEMP"
-        sf_cursor.execute(f"create or replace transient table "
-                          f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as "
-                          f"{sf_data_source} ")
-        sf_cursor.execute(f"drop table {main_datasource_details}")
+        main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + str(run_number)
+        temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + str(run_number) + "_TEMP"
+        main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as {sf_data_source}"
+        print(f"Main datasource preparation query: {main_datasource_query}")
+        sf_cursor.execute(main_datasource_query)
+        sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
-        sf_cursor.execute(f"select count(1) from {main_datasource_details}")
+        sf_cursor.execute(f"select count(1) from {main_datasource_table}")
         record_count = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(f"update SUPPRESSION_DATASOURCE_SCHEDULE_STATUS set status='C' ,recordCount={record_count}"
-                             f" where dataSourceId={request_id} and runNumber={run_number}")
-
+        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='C' ,recordCount={record_count}"
+                             f" where dataSourceId={data_source_id} and runNumber={run_number}")
     except Exception as e:
-        print(f"Exception occurred while creating main_datasource. {str(e)} ")
+        print(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} ")
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
@@ -250,7 +259,8 @@ class LocalFileTransfer:
             return None
 
 
-def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,consumer_logger, request_id):
+def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,
+                                 consumer_logger, request_id):
     try:
         if sourcesubtype == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -305,13 +315,13 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         if isFile:
             file_details_list = []
             file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
-                                                    inputData_dict,table_name)
+                                                    inputData_dict, table_name)
             # add logic to insert the file details into table
             fileName = file_details_dict["name"]
             count = file_details_dict["count"]
             size = file_details_dict["size"]
             last_modified_time = file_details_dict["last_modified_time"]
-            insert_file_details_query=f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
+            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time) ('{fileName}','{count}','{size}','{last_modified_time}') where runNumber={run_number} and dataSourceMappingId ={request_id}"
             mysql_cursor.execute(insert_file_details_query)
             file_details_list.append(file_details_dict)
 
@@ -326,7 +336,8 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
 
             print(SF_DELETE_OLD_DETAILS_QUERY)
-            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace("FILE", to_delete_mysql_formatted)
+            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace(
+                "FILE", to_delete_mysql_formatted)
             sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
             # run delete query to remove old files
 
@@ -334,7 +345,8 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             consumer_logger.info("First time dump processing all the files..")
             for file in files_list:
                 fully_qualified_file = inputData_dict["filePath"] + file
-                file_details_dict = process_single_file(ftpObj, fully_qualified_file,consumer_logger,table_name,last_iteration_files_details)
+                file_details_dict = process_single_file(ftpObj, fully_qualified_file, consumer_logger, table_name,
+                                                        last_iteration_files_details)
                 fileName = file_details_dict["name"]
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
@@ -373,7 +385,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
 
-        ftpObj.download_file(fully_qualified_file, file_path+"/"+file)
+        ftpObj.download_file(fully_qualified_file, file_path + "/" + file)
         line_count = sum(1 for _ in open(file_path + file, 'r'))
         file_details_dict["name"] = file
         file_details_dict["count"] = line_count
@@ -383,7 +395,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
-        stage_name=STAGE_TABLE_PREFIX+table_name+"_"+str(run_number)
+        stage_name = STAGE_TABLE_PREFIX + table_name + "_" + str(run_number)
         if inputData_dict['isHeaderExists'] == 'true':
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' ) "
@@ -392,7 +404,7 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
             sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
-        sf_put_file_stage_query=f" PUT file://{file_path}/{file} @{stage_name} "
+        sf_put_file_stage_query = f" PUT file://{file_path}/{file} @{stage_name} "
         consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
         sf_cursor.execute(sf_put_file_stage_query)
         field_delimiter = inputData_dict['delimiter']

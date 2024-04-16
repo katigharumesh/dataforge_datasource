@@ -1,4 +1,5 @@
 
+
 # import statements
 
 import glob
@@ -30,9 +31,10 @@ from email.mime.multipart import MIMEMultipart
 
 import paramiko
 import ftplib
+import traceback
 
-SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
-LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
+SCRIPT_PATH = r"D:\tmp\data_forge\app_logs"
+LOG_PATH = r"D:\tmp\data_forge\app_logs"
 PID_FILE = SCRIPT_PATH + "/app.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -61,14 +63,25 @@ MYSQL_CONFIGS = {
     "allow_local_infile": True
 }
 
-FETCH_MAIN_DATASOURCE_DETAILS = 'select id,name,channelName,userGroupId,feedType,dataProcessingType,' \
-                                'FilterMatchFields,isps from SUPPRESSION_DATASOURCE where id=REQUEST_ID '
+SCHEDULE_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE'
+SCHEDULE_STATUS_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE_STATUS'
+DATASOURCE_TABLE = 'SUPPRESSION_DATASOURCE'
+DATASOURCE_MAPPING_TABLE = 'SUPPRESSION_DATASOURCE_MAPPING'
+SOURCE_TYPES_TABLE = 'SUPPRESSION_SOURCE_TYPES'
+FILE_DETAILS_TABLE = 'SUPPRESSION_DATASOURCE_FILE_DETAILS'
 
-FETCH_SOURCE_DETAILS = 'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.hostname,b.port,b.username,b.password,' \
+FETCH_MAIN_DATASOURCE_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
+                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId,b.runNumber from {DATASOURCE_TABLE} a ' \
+                                f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=REQUEST_ID and b.runNumber=RUN_NUMBER'
+
+FETCH_SOURCE_DETAILS = 'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        'SUPPRESSION_DATASOURCE_MAPPING a join ' \
                        'SUPPRESSION_SOURCE_TYPES b on a.sourceId=b.id where a.dataSourceId=REQUEST_ID '
+
+INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName)' \
+                      f' values (%s,%s,%s,%s,%s)'
 
 SNOWFLAKE_CONFIGS = {
     "account": 'zetaglobal.us-east-1',
@@ -76,7 +89,7 @@ SNOWFLAKE_CONFIGS = {
     "password": "Jsw44QTLRYYGLGBgfhXQR7webwaxArWx",
     "database": "GREEN",
     "warehouse": "GREEN_ADHOC",
-    "schema": 'INFS_LPT'
+    "schema": 'INFS_LPT_QA'
 }
 
 STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
