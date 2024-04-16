@@ -283,7 +283,7 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
-        table_name = SOURCE_TABLE_PREFIX + "_" + str(id) + "_" + str(run_number)
+        table_name = SOURCE_TABLE_PREFIX + str(id) + "_" + str(run_number)
         consumer_logger.info(f"Table name for this DataSource is : {table_name}")
         consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -291,13 +291,12 @@ def process_sftp_ftp_nfs_request(sourcesubtype, hostname, port, username, passwo
         consumer_logger.info("Snowflake connection acquired successfully")
         if run_number == 0:
             field_delimiter = inputData_dict['delimiter']
-            header_list = inputData_dict['headerValue'].split(field_delimiter)
-
-            sf_create_table_query = f"create or replace transient table if not exists {table_name}  ( "
+            header_list = inputData_dict['headerValue'].split(str(field_delimiter))
+            sf_create_table_query = f"create or replace transient table  {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , filename varchar )"
         else:
-            last_run_table_name = SOURCE_TABLE_PREFIX + "_" + str(id) + "_" + str(last_successful_run_number)
+            last_run_table_name = SOURCE_TABLE_PREFIX + str(id) + "_" + str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table if not exists {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)

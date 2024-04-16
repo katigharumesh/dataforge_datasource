@@ -94,4 +94,4 @@ SF_DELETE_OLD_DETAILS_QUERY = "delete from SOURCE_TABLE where filename in (FILES
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count from x"  # get last iteration files data
 LAST_SUCCESSFULL_RUN_NUMBER_QUERY = ""
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
-file_path = "/suppression/shyam/"  # local file path - mount to download the temp files
+file_path = r"E:\tmp\data_forge\temp_files"  # local file path - mount to download the temp files
