@@ -33,8 +33,8 @@ import paramiko
 import ftplib
 import traceback
 
-SCRIPT_PATH = r"D:\tmp\data_forge\app_logs"
-LOG_PATH = r"D:\tmp\data_forge\app_logs"
+SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
+LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
 PID_FILE = SCRIPT_PATH + "/app.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 

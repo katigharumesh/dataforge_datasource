@@ -1,3 +1,4 @@
+
 from serviceconfigurations import *
 
 
@@ -136,9 +137,11 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         run_number = main_datasource_details['runNumber']
 
         if data_processing_type == 'K':
-            sf_data_source = f"select * from {' intersect select * from '.join(sources_loaded)}"
+            intersect_query=f' intersect select {filter_match_fields} from '.join(sources_loaded)
+            sf_data_source = f"select {filter_match_fields} from {intersect_query}"
         elif data_processing_type == 'M':
-            sf_data_source = f"select * from {' union select * from '.join(sources_loaded)}"
+            union_query = f' union select * from '.join(sources_loaded)
+            sf_data_source = f"select * from {union_query}"
         else:
             print(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
@@ -281,16 +284,16 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
         isDir = True if inputData_dict["filePath"].endswith("/") else False
 
         result = {}
-        consumer_logger.info(f"Fetching runNumber from table... ")
-        consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id))}")
-        mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id)))
+        #consumer_logger.info(f"Fetching runNumber from table... ")
+        #consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id))}")
+        #mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id)))
 
         last_successful_run_number = 0
         # mysql_cursor.execute(last_successful_run_number_query)
 
         last_iteration_files_details = []
         if run_number != 0:
-            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',data_source_id))
+            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',str(data_source_id)))
             last_successful_run_number = int(mysql_cursor.fetchone()[0])
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
             last_iteration_files_details = mysql_cursor.fetchall()
@@ -322,7 +325,7 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             count = file_details_dict["count"]
             size = file_details_dict["size"]
             last_modified_time = file_details_dict["last_modified_time"]
-            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
+            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
             mysql_cursor.execute(insert_file_details_query)
             file_details_list.append(file_details_dict)
 
@@ -352,7 +355,7 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS values (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
+                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
                 mysql_cursor.execute(insert_file_details_query)
                 file_details_list.append(file_details_dict)
 
@@ -400,13 +403,13 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
-        stage_name = STAGE_TABLE_PREFIX + table_name + "_" + str(run_number)
+        stage_name = "STAGE_" + table_name
         if inputData_dict['isHeaderExists'] == 'true':
             consumer_logger.info("Header not available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' ) "
+            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' ) "
         else:
             consumer_logger.info("Header available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
+            sf_create_stage_query = f" CREATE OR REPLACE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
         sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "
@@ -419,10 +422,11 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         if isOldFile:
             SF_DELETE_OLD_DETAILS_QUERY = f"delete from {table_name} where filename = '{file}'"
             sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY)
-        sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @stage_name ) "
+        sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
         consumer_logger.info(f"Executing query: {sf_copy_into_query}")
         sf_cursor.execute(sf_copy_into_query)
         return file_details_dict
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
+
