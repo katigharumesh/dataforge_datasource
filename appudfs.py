@@ -302,8 +302,8 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
         last_iteration_files_details = []
         if run_number != 0:
             mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',str(data_source_id)))
-            last_successful_run_number = int(mysql_cursor.fetchone()[0])
-            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY)
+            last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
+            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY.replace('ID',str(request_id)).replace('RUNNUMBER',str(run_number)))
             last_iteration_files_details = mysql_cursor.fetchall()
             # [filename,size,modified_time,count]
         table_name = source_table
@@ -319,7 +319,7 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , filename varchar )"
         else:
-            last_run_table_name = SOURCE_TABLE_PREFIX + str(request_id) + "_" + str(last_successful_run_number)
+            last_run_table_name = table_name[:-1]+str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table if not exists {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)

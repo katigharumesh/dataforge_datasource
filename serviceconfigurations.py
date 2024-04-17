@@ -111,6 +111,6 @@ SUBJECT = "PROXY TESTING REPORT"
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from SOURCE_TABLE where filename in (FILES)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=ID and runNumber=RUNNUMBER "  # get last iteration files data
-LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) from SUPPRESSION_REQUEST_SCHEDULE_STATUS where requestId=REQUEST_ID and status='C'"
+LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
 FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
