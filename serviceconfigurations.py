@@ -80,8 +80,11 @@ FETCH_SOURCE_DETAILS = 'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name
                        'SUPPRESSION_DATASOURCE_MAPPING a join ' \
                        'SUPPRESSION_SOURCE_TYPES b on a.sourceId=b.id where a.dataSourceId=REQUEST_ID '
 
-INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName)' \
-                      f' values (%s,%s,%s,%s,%s)'
+INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time)' \
+                      f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+
+DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceScheduleId=%s, ' \
+                      f'runNumber=%s, dataSourceMappingId=%s'
 
 SNOWFLAKE_CONFIGS = {
     "account": 'zetaglobal.us-east-1',

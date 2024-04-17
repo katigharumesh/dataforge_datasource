@@ -108,8 +108,10 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
+                mysql_cursor.execute(DELETE_FILE_DETAILS, (data_source_schedule_id, run_number, data_source_mapping_id))
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
-                    data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name))
+                    data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name,
+                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA'))
                 return source_table
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
