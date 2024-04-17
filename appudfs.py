@@ -139,14 +139,13 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         data_processing_type = main_datasource_details['dataProcessingType']
         filter_match_fields = main_datasource_details['FilterMatchFields']
         isps = main_datasource_details['isps']
+        data_source_schedule_id = main_datasource_details['dataSourceScheduleId']
         run_number = main_datasource_details['runNumber']
 
         if data_processing_type == 'K':
-            intersect_query=f' intersect select {filter_match_fields} from '.join(sources_loaded)
-            sf_data_source = f"select {filter_match_fields} from {intersect_query}"
+            sf_data_source = f' intersect select {filter_match_fields} from '.join(sources_loaded)
         elif data_processing_type == 'M':
-            union_query = f' union select * from '.join(sources_loaded)
-            sf_data_source = f"select * from {union_query}"
+            sf_data_source = f' union select {filter_match_fields} from '.join(sources_loaded)
         else:
             print(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
@@ -154,7 +153,7 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         sf_cursor = sf_conn.cursor()
         main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
         temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
-        main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as {sf_data_source}"
+        main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select {filter_match_fields} from {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
@@ -163,8 +162,8 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         record_count = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='C' ,recordCount={record_count}"
-                             f" where dataSourceId={data_source_id} and runNumber={run_number}")
+        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='C', recordCount={record_count}"
+                             f" where dataSourceScheduleId={data_source_schedule_id} and runNumber={run_number}")
     except Exception as e:
         print(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} ")
@@ -172,7 +171,9 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
             mysql_conn.mclose()
-
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 class FileTransfer:
     def __init__(self, hostname, port, username, password):

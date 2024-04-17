@@ -88,11 +88,20 @@ def main(request_id, run_number):
     # Wait for consumer threads to finish
     for consumer_thread in consumer_threads:
         consumer_thread.join()
-    main_logger.info("All sources are processed..")
-    print("All sources are processed")
-    end_time = time.time()
+    if len(sources_loaded) != len(sources_queue):
+        main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {len(sources_loaded)} "
+                         f"sources. Considering the datasource preparation request as failed.")
+        print(f"Only {len(sources_loaded)} sources are successfully processed out of {len(sources_loaded)} sources."
+              f" Considering the datasource preparation request as failed.")
+        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='E' where "
+                             f"dataSourceScheduleId={main_datasource_details['dataSourceScheduleId']} and "
+                             f"runNumber={main_datasource_details['runNumber']} ")
+        exit_program(-1)
+    main_logger.info("All sources are successfully processed.")
+    print("All sources are successfully processed.")
     # Preparing request level main_datasource
     create_main_datasource(sources_loaded, main_datasource_details)
+    end_time = time.time()
     main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
     exit_program(0)
 
