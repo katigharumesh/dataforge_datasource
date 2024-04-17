@@ -86,6 +86,8 @@ INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,ru
 DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceScheduleId=%s, ' \
                       f'runNumber=%s, dataSourceMappingId=%s'
 
+ERROR_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='E' where dataSourceScheduleId=%s and runNumber=%s "
+
 SNOWFLAKE_CONFIGS = {
     "account": 'zetaglobal.us-east-1',
     "user": "green_lp_service",

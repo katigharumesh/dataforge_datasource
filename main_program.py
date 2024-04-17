@@ -93,9 +93,7 @@ def main(request_id, run_number):
                          f"sources. Considering the datasource preparation request as failed.")
         print(f"Only {len(sources_loaded)} sources are successfully processed out of {len(sources_loaded)} sources."
               f" Considering the datasource preparation request as failed.")
-        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='E' where "
-                             f"dataSourceScheduleId={main_datasource_details['dataSourceScheduleId']} and "
-                             f"runNumber={main_datasource_details['runNumber']} ")
+        mysql_cursor.execute(ERROR_SCHEDULE_STATUS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
         exit_program(-1)
     main_logger.info("All sources are successfully processed.")
     print("All sources are successfully processed.")
