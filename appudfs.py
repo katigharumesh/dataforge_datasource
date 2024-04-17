@@ -35,13 +35,18 @@ def load_data_source(source, main_datasource_details, consumer_logger):
 
         source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
         if source_type == "F":
-            if source_sub_type == "S" or source_sub_type == "N":
-                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, hostname, int(port), username, password, input_data_dict,
-                                             mysql_cursor, consumer_logger, data_source_mapping_id)
+            if source_sub_type == "S":
+                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number,
+                                                            data_source_schedule_id, source_sub_type, input_data_dict,
+                                                            mysql_cursor, consumer_logger, data_source_mapping_id, hostname,
+                                                            int(port), username, password)
                 return source_table
             elif source_sub_type == "N":
-                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
-                                             consumer_logger=consumer_logger, request_id=data_source_mapping_id)
+                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number,
+                                                            data_source_schedule_id, source_sub_type,
+                                                            inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
+                                                            consumer_logger=consumer_logger,
+                                                            request_id=data_source_mapping_id)
                 return source_table
             elif source_sub_type == "A":
                 pass
@@ -264,8 +269,8 @@ class LocalFileTransfer:
             return None
 
 
-def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, sourcesubtype, hostname, port, username, password, inputData_dict, mysql_cursor,
-                                 consumer_logger, request_id):
+def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, sourcesubtype, inputData_dict, mysql_cursor,
+                                 consumer_logger, request_id,  hostname = None, port = None, username = None, password = None):
     try:
         if sourcesubtype == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -420,8 +425,8 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
 
         if isOldFile:
-            SF_DELETE_OLD_DETAILS_QUERY = f"delete from {table_name} where filename = '{file}'"
-            sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY)
+            sf_delete_old_details_query = f"delete from {table_name} where filename = '{file}'"
+            sf_cursor.execute(sf_delete_old_details_query)
         sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
         consumer_logger.info(f"Executing query: {sf_copy_into_query}")
         sf_cursor.execute(sf_copy_into_query)
