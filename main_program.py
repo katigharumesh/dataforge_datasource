@@ -1,13 +1,13 @@
-
 from serviceconfigurations import *
 from basicudfs import *
 from appudfs import *
 
 global sources_loaded
 sources_loaded = []
-
+data_soureces_count=0
 
 def load_data_sources_producer(sources_queue, request_id, queue_empty_condition, thread_count, main_logger):
+    global data_soureces_count
     main_logger.info(f"Producer execution started: {time.ctime()} ")
     main_logger.info(f"Acquiring mysql connection...")
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -16,6 +16,7 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
     main_logger.info(f"executing query: {FETCH_SOURCE_DETAILS.replace('REQUEST_ID', request_id)}")
     mysql_cursor.execute(FETCH_SOURCE_DETAILS.replace("REQUEST_ID", request_id))
     data_sources = mysql_cursor.fetchall()
+    data_soureces_count=len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
     for source in data_sources:
         sources_queue.put(source)
@@ -88,11 +89,12 @@ def main(request_id, run_number):
     # Wait for consumer threads to finish
     for consumer_thread in consumer_threads:
         consumer_thread.join()
-    if len(sources_loaded) != len(sources_queue):
-        main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {len(sources_loaded)} "
+    if len(sources_loaded) != data_soureces_count:
+        main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {data_soureces_count} "
                          f"sources. Considering the datasource preparation request as failed.")
-        print(f"Only {len(sources_loaded)} sources are successfully processed out of {len(sources_loaded)} sources."
+        print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_soureces_count} sources."
               f" Considering the datasource preparation request as failed.")
+        mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
         mysql_cursor.execute(ERROR_SCHEDULE_STATUS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
         exit_program(-1)
     main_logger.info("All sources are successfully processed.")
@@ -106,8 +108,8 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "7"
-        run_number = "2"
+        request_id = "38"
+        run_number = "0"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])

@@ -1,4 +1,3 @@
-
 from serviceconfigurations import *
 
 
@@ -108,7 +107,7 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
-                mysql_cursor.execute(DELETE_FILE_DETAILS, (data_source_schedule_id, run_number, data_source_mapping_id))
+                #mysql_cursor.execute(DELETE_FILE_DETAILS, (data_source_schedule_id, run_number, data_source_mapping_id))
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name,
                     'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA'))
@@ -303,8 +302,9 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
         if run_number != 0:
             mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',str(data_source_id)))
             last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY.replace('ID',str(request_id)).replace('RUNNUMBER',str(run_number)))
+            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY.replace('ID',str(request_id)).replace('RUNNUMBER',str(last_successful_run_number)))
             last_iteration_files_details = mysql_cursor.fetchall()
+            consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
             # [filename,size,modified_time,count]
         table_name = source_table
         consumer_logger.info(f"Table name for this DataSource is : {table_name}")
@@ -320,27 +320,31 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             sf_create_table_query += " varchar , filename varchar )"
         else:
             last_run_table_name = table_name[:-1]+str(last_successful_run_number)
-            sf_create_table_query = f"create or replace transient table if not exists {table_name}  clone {last_run_table_name} "
+            sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)
 
         if isFile:
             file_details_list = []
             file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
-                                                    inputData_dict, table_name)
+                                                    inputData_dict, table_name,last_iteration_files_details)
             # add logic to insert the file details into table
-            fileName = file_details_dict["name"]
+            fileName = file_details_dict["filename"]
             count = file_details_dict["count"]
             size = file_details_dict["size"]
             last_modified_time = file_details_dict["last_modified_time"]
-            insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
-            mysql_cursor.execute(insert_file_details_query)
+            #insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
+            #mysql_cursor.execute(insert_file_details_query)
+            mysql_cursor.execute(INSERT_FILE_DETAILS, (
+                data_source_schedule_id, run_number, request_id, count, fileName,
+                'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
             file_details_list.append(file_details_dict)
 
         elif isDir:
 
             consumer_logger.info("Given source is a path. List of files need to be considered.")
             files_list = ftpObj.list_files(inputData_dict["filePath"])
+            consumer_logger.info(f"Fetched files from the path : {files_list}")
             to_delete = []
             for file in last_iteration_files_details:
                 if file['filename'] not in files_list:
@@ -349,7 +353,7 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
 
             print(SF_DELETE_OLD_DETAILS_QUERY)
             SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace(
-                "FILE", to_delete_mysql_formatted)
+                "FILES", to_delete_mysql_formatted)
             sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
             # run delete query to remove old files
 
@@ -359,12 +363,15 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
                 fully_qualified_file = inputData_dict["filePath"] + file
                 file_details_dict = process_single_file(ftpObj, fully_qualified_file, consumer_logger, table_name,
                                                         last_iteration_files_details)
-                fileName = file_details_dict["name"]
+                fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
-                mysql_cursor.execute(insert_file_details_query)
+                #insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
+                #mysql_cursor.execute(insert_file_details_query)
+                mysql_cursor.execute(INSERT_FILE_DETAILS, (
+                    data_source_schedule_id, run_number, request_id, count, fileName,
+                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
                 file_details_list.append(file_details_dict)
 
         else:
@@ -382,28 +389,29 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
 
 
 def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logger, inputData_dict,
-                        table_name, last_iteration_files_details=[]):
+                        table_name, last_iteration_files_details):
     try:
         file_details_dict = {}
         isOldFile = False
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
         meta_data = ftpObj.get_file_metadata(fully_qualified_file)  # metadata from ftp
-        consumer_logger.info(f"Meta data fetched successfully : {meta_data}")
+        consumer_logger.info(f"Meta data fetched successfully for file :{file} Meta data : {meta_data}")
         if run_number != 0:
-            if file in [i['filename'] for i in last_iteration_files_details]:
+            last_iteration_file_names_list = [i['filename'] for i in last_iteration_files_details]
+            consumer_logger.info(f"last iteration files are {last_iteration_file_names_list}")
+            if file in last_iteration_file_names_list:
                 isOldFile = True
-                file_index = [i['filename'] for i in last_iteration_files_details].index(file)
-                if meta_data['size'] == last_iteration_files_details[file_index]['size'] and meta_data[
-                    'last_modified'] == \
-                        last_iteration_files_details[file_index]['last_modified_time']:
+                consumer_logger.info("Found filename in last_iteration_file details. Checking for metadata..")
+                file_index = last_iteration_file_names_list.index(file)
+                if str(meta_data['size']) == last_iteration_files_details[file_index]['size'] and str(meta_data['last_modified']) == last_iteration_files_details[file_index]['last_modified_time']:
                     consumer_logger.info("File" + file + " already processed last time.. So skipping the file.")
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
 
         ftpObj.download_file(fully_qualified_file, FILE_PATH + file)
         line_count = sum(1 for _ in open(FILE_PATH + file, 'r'))
-        file_details_dict["name"] = file
+        file_details_dict["filename"] = file
         file_details_dict["count"] = line_count
         file_details_dict["size"] = meta_data["size"]
         file_details_dict["last_modified_time"] = meta_data["last_modified"]
