@@ -207,6 +207,8 @@ class FileTransfer:
         if isinstance(self.connection, paramiko.Transport):
             sftp = paramiko.SFTPClient.from_transport(self.connection)
             sftp.get(remote_file, local_file)
+            if requires_conversion(local_file):
+                perform_conversion(local_file)
         elif isinstance(self.connection, ftplib.FTP):
             with open(local_file, 'wb') as f:
                 self.connection.retrbinary('RETR ' + remote_file, f.write)
@@ -236,6 +238,33 @@ class FileTransfer:
         self.connection.close()
 
 
+
+def requires_conversion(filename):
+    """Check if dos2unix conversion is required."""
+    with open(filename, 'rb') as f:
+        for line in f:
+            if b'\r\n' in line:
+                return True
+    return False
+
+
+def perform_conversion(filename):
+    """Perform dos2unix conversion."""
+    # Check if the file is gzipped
+    if filename.endswith('.gz'):
+        temp_file = filename + '.tmp'
+        with gzip.open(filename, 'rt') as f_in, open(temp_file, 'w') as f_out:
+            for line in f_in:
+                f_out.write(line.replace('\r\n', '\n'))
+        os.rename(temp_file, filename)
+    else:
+        # For regular text files
+        with fileinput.FileInput(filename, inplace=True) as f:
+            for line in f:
+                print(line.replace('\r\n', '\n'), end='')
+
+
+
 class LocalFileTransfer:
     def __init__(self, mount_path):
         self.mount_path = mount_path
@@ -252,6 +281,8 @@ class LocalFileTransfer:
             remote_path = os.path.join(self.mount_path, remote_file)
             with open(remote_path, 'rb') as src, open(local_file, 'wb') as dst:
                 dst.write(src.read())
+            if requires_conversion(local_file):
+                perform_conversion(local_file)
         except FileNotFoundError:
             print(f"File '{remote_file}' not found.")
         except Exception as e:
@@ -326,20 +357,31 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
 
         if isFile:
             file_details_list = []
-            file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
+            files_list = inputData_dict['filePath'].split(",")
+            if len(files_list) > 1:
+                consumer_logger.info("There are many files with comma separated...")
+                for file in files_list:
+                    file_details_dict = process_single_file(run_number, ftpObj, file,consumer_logger,inputData_dict, table_name, last_iteration_files_details)
+                    # add logic to insert the file details into table
+                    fileName = file_details_dict["filename"]
+                    count = file_details_dict["count"]
+                    size = file_details_dict["size"]
+                    last_modified_time = file_details_dict["last_modified_time"]
+                    mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
+                    file_details_list.append(file_details_dict)
+            elif len(files_list) == 1:
+                file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
                                                     inputData_dict, table_name,last_iteration_files_details)
-            # add logic to insert the file details into table
-            fileName = file_details_dict["filename"]
-            count = file_details_dict["count"]
-            size = file_details_dict["size"]
-            last_modified_time = file_details_dict["last_modified_time"]
-            #insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}') "
-            #mysql_cursor.execute(insert_file_details_query)
-            mysql_cursor.execute(INSERT_FILE_DETAILS, (
-                data_source_schedule_id, run_number, request_id, count, fileName,
-                'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
-            file_details_list.append(file_details_dict)
-
+                # add logic to insert the file details into table
+                fileName = file_details_dict["filename"]
+                count = file_details_dict["count"]
+                size = file_details_dict["size"]
+                last_modified_time = file_details_dict["last_modified_time"]
+                mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
+                file_details_list.append(file_details_dict)
+            else:
+                consumer_logger.info("There are no files specified.. Kindly check the request..")
+                raise Exception("There are no files specified.. Kindly check the request..")
         elif isDir:
 
             consumer_logger.info("Given source is a path. List of files need to be considered.")
@@ -367,8 +409,6 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                #insert_file_details_query = f"insert into SUPPRESSION_DATASOURCE_FILE_DETAILS (fileName,count,size,last_modified_time,runNumber,dataSourceMappingId,dataSourceScheduleId) values ('{fileName}','{count}','{size}','{last_modified_time}',{run_number},'{request_id}','{data_source_schedule_id}')"
-                #mysql_cursor.execute(insert_file_details_query)
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     data_source_schedule_id, run_number, request_id, count, fileName,
                     'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
@@ -395,6 +435,11 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         isOldFile = False
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
+        if file.split(".")[-1] == "" or file.split(".")[-1] == "csv" or file.split(".")[-1] == "txt" or file.split(".")[-1] == "gz":
+            consumer_logger.info("The given file is in required extension...")
+        else:
+            consumer_logger.info("The given file is not in required extension. ")
+            raise Exception("The given file is not in required extension. ")
         meta_data = ftpObj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file :{file} Meta data : {meta_data}")
         if run_number != 0:
@@ -420,12 +465,17 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         sf_cursor = sf_conn.cursor()
         field_delimiter = inputData_dict["delimiter"]
         stage_name = "STAGE_" + table_name
+        sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name}"
+        file_format = f"FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"'  "
         if inputData_dict['isHeaderExists'] == 'true':
-            consumer_logger.info("Header not available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' ) "
+            header_exists = ", SKIP_HEADER =1"
         else:
-            consumer_logger.info("Header available for file.. Creating stage according to it.")
-            sf_create_stage_query = f" CREATE OR REPLACE STAGE {stage_name} FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"' , SKIP_HEADER =1) "
+            header_exists = ""
+        if file.split(".")[-1] == "gz":
+            compression = " , COMPRESSION = GZIP"
+        else:
+            compression = " , COMPRESSION = GZIP"
+        sf_create_stage_query = sf_create_stage_query + file_format + header_exists +  compression + ")"
         consumer_logger.info(f"Executing query: {sf_create_stage_query}")
         sf_cursor.execute(sf_create_stage_query)
         sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "

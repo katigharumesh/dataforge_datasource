@@ -31,6 +31,8 @@ from email.mime.multipart import MIMEMultipart
 import paramiko
 import ftplib
 import traceback
+import fileinput
+import gzip
 
 SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
 LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
