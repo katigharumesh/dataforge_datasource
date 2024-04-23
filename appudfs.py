@@ -457,7 +457,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             consumer_logger.info("First time dump processing all the files..")
             for file in files_list:
                 fully_qualified_file = input_data_dict["filePath"] + file
-                file_details_dict = process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, table_name,
+                file_details_dict = process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
                                                         last_iteration_files_details, source_sub_type, username, password)
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
