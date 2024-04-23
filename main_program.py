@@ -110,8 +110,8 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "42"
-        run_number = "4"
+        request_id = "43"
+        run_number = "0"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])

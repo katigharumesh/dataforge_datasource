@@ -489,7 +489,7 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
         is_old_file = False
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
-        if file.split(".")[-1] == "" or file.split(".")[-1] == "csv" or file.split(".")[-1] == "txt" or file.split(".")[-1] == "gz":
+        if file.split(".")[-1] == file or file.split(".")[-1] == "csv" or file.split(".")[-1] == "txt" or file.split(".")[-1] == "gz":
             consumer_logger.info("The given file is in required extension...")
         else:
             consumer_logger.info("The given file is not in required extension. ")
@@ -518,21 +518,22 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         field_delimiter = input_data_dict["delimiter"]
-        if input_data_dict['isHeaderExists'] == 'true':
+        #print(input_data_dict['isHeaderExists'] ,type(input_data_dict['isHeaderExists']))
+        if input_data_dict['isHeaderExists']:
             header_exists = ", SKIP_HEADER = 1"
         else:
             header_exists = ""
-        if file.split(".")[-1] == "gz":
+        if (file.split(".")[-1] == "gz"):
             compression = " , COMPRESSION = GZIP"
         else:
             compression = ""
-            
+
         if is_old_file:
             sf_delete_old_details_query = f"delete from {table_name} where filename = '{file}'"
             sf_cursor.execute(sf_delete_old_details_query)
         if source_sub_type != 'A':
             stage_name = "STAGE_" + table_name
-            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name}"
+            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name} "
             file_format = f"FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"'  "
 
             sf_create_stage_query = sf_create_stage_query + file_format + header_exists + compression + ")"
@@ -561,18 +562,5 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
