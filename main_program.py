@@ -89,6 +89,7 @@ def main(request_id, run_number):
     # Wait for consumer threads to finish
     for consumer_thread in consumer_threads:
         consumer_thread.join()
+    print("sources loaded: " + str(sources_loaded))
     if len(sources_loaded) != data_soureces_count:
         main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {data_soureces_count} "
                          f"sources. Considering the datasource preparation request as failed.")
@@ -106,10 +107,11 @@ def main(request_id, run_number):
     exit_program(0)
 
 
+
 if __name__ == "__main__":
     try:
-        request_id = "38"
-        run_number = "0"
+        request_id = "42"
+        run_number = "4"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])

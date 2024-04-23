@@ -33,9 +33,10 @@ import ftplib
 import traceback
 import fileinput
 import gzip
+import boto3
 
-SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
-LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
+SCRIPT_PATH = r"D:\tmp\data_forge"
+LOG_PATH = r"D:\tmp\data_forge\app_logs"
 PID_FILE = SCRIPT_PATH + "/app.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -115,4 +116,5 @@ FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,si
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
 FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
+
 

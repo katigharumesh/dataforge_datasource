@@ -35,20 +35,26 @@ def load_data_source(source, main_datasource_details, consumer_logger):
         source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
         if source_type == "F":
             if source_sub_type == "S":
-                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number,
+                source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                             data_source_schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, data_source_mapping_id, hostname,
                                                             int(port), username, password)
                 return source_table
             elif source_sub_type == "N":
-                source_table = process_sftp_ftp_nfs_request(data_source_id, source_table, run_number,
+                source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                             data_source_schedule_id, source_sub_type,
-                                                            inputData_dict=input_data_dict, mysql_cursor=mysql_cursor,
+                                                            input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
                                                             consumer_logger=consumer_logger,
                                                             request_id=data_source_mapping_id)
                 return source_table
             elif source_sub_type == "A":
-                pass
+                source_table = process_file_type_request(data_source_id, source_table, run_number,
+                                                         data_source_schedule_id,source_sub_type,
+                                                         input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
+                                                         consumer_logger=consumer_logger,
+                                                         request_id=data_source_mapping_id, username=username,
+                                                         password=password)
+                return source_table
             elif source_sub_type == "D":
                 pass
             else:
@@ -301,25 +307,72 @@ class LocalFileTransfer:
             print(f"File '{file_path}' not found.")
             return None
 
+class ProcessS3Files:
+    def __init__(self, access_key, secret_key):
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.s3_client = boto3.client('s3', aws_access_key_id=access_key, aws_secret_access_key=secret_key)
 
-def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_source_schedule_id, sourcesubtype, inputData_dict, mysql_cursor,
+    def list_files(self, file_path):
+        try:
+            bucket_name = file_path.split('/')[2]
+            prefix = '/'.join(file_path.split('/')[3:])
+            response = self.s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter='/')
+            s3_files = [str(obj['Key']).split('/')[-1] for obj in response.get('Contents', [])]
+            return s3_files
+        except Exception as e:
+            print(f"Error occurred while listing files in s3 path: {e}")
+            return []
+
+    def get_file_metadata(self, file):
+        try:
+            bucket_name = file.split('/')[2]
+            key = '/'.join(file.split('/')[3:])
+            response = self.s3_client.head_object(Bucket=bucket_name, Key=key)
+            metadata = {
+                'size': str(response['ContentLength']),
+                'last_modified': str(response['LastModified'])
+            }
+            return metadata
+        except Exception as e:
+            print(f"Error occurred while fetching metadata for {file} file. Error: {e}")
+            return None
+
+    def header_validation(self, file, header_value, delimiter):
+        try:
+            bucket_name = file.split('/')[2]
+            key = '/'.join(file.split('/')[3:])
+            obj = self.s3_client.get_object(Bucket=bucket_name, Key=key)
+            first_line = obj['Body'].readline().decode().strip()
+            if len(str(first_line).split(delimiter)) == len(header_value.split(delimiter)):
+                return True
+            else:
+                return False
+        except Exception as e:
+            print(f"Error occurred during header validation for {file} file. Error: {e}")
+
+
+def process_file_type_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, input_data_dict, mysql_cursor,
                                  consumer_logger, request_id,  hostname = None, port = None, username = None, password = None):
     try:
-        if sourcesubtype == "S":
+        if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
             consumer_logger.info("Getting SFTP/FTP connection...")
-            ftpObj = FileTransfer(hostname, port, username, password)
-            ftpObj.connect()
+            source_obj = FileTransfer(hostname, port, username, password)
+            source_obj.connect()
             consumer_logger.info("SFTP/FTP connection established successfully.")
-        elif sourcesubtype == "N":
+        elif source_sub_type == "N":
             consumer_logger.info("Request initiated to process.. File source: NFS ")
-            ftpObj = LocalFileTransfer(inputData_dict["filePath"])
+            source_obj = LocalFileTransfer(input_data_dict["filePath"])
+        elif source_sub_type == "A":
+            consumer_logger.info("Request initiated to process.. File source: AWS ")
+            source_obj = ProcessS3Files(username, password)
         else:
             consumer_logger.info("Wrong method called.. ")
             raise Exception("Wrong method called. This method works only for SFTP/FTP/NFS requests only...")
 
-        isFile = False if inputData_dict["filePath"].endswith("/") else True
-        isDir = True if inputData_dict["filePath"].endswith("/") else False
+        isFile = False if input_data_dict["filePath"].endswith("/") else True
+        isDir = True if input_data_dict["filePath"].endswith("/") else False
 
         result = {}
         #consumer_logger.info(f"Fetching runNumber from table... ")
@@ -338,14 +391,14 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
             # [filename,size,modified_time,count]
         table_name = source_table
-        consumer_logger.info(f"Table name for this DataSource is : {table_name}")
+        consumer_logger.info(f"Table name for this DataSource is: {table_name}")
         consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection acquired successfully")
         if run_number == 0:
-            field_delimiter = inputData_dict['delimiter']
-            header_list = inputData_dict['headerValue'].split(str(field_delimiter))
+            field_delimiter = input_data_dict['delimiter']
+            header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , filename varchar )"
@@ -357,11 +410,11 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
 
         if isFile:
             file_details_list = []
-            files_list = inputData_dict['filePath'].split(",")
-            if len(files_list) > 1:
+            files_list = input_data_dict['filePath'].split(",")
+            if len(files_list) > 1 and source_sub_type != 'A':
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
-                    file_details_dict = process_single_file(run_number, ftpObj, file,consumer_logger,inputData_dict, table_name, last_iteration_files_details)
+                    file_details_dict = process_single_file(run_number, source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
                     fileName = file_details_dict["filename"]
                     count = file_details_dict["count"]
@@ -369,9 +422,9 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
                     last_modified_time = file_details_dict["last_modified_time"]
                     mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
                     file_details_list.append(file_details_dict)
-            elif len(files_list) == 1:
-                file_details_dict = process_single_file(run_number, ftpObj, inputData_dict['filePath'], consumer_logger,
-                                                    inputData_dict, table_name,last_iteration_files_details)
+            elif len(files_list) == 1 or source_sub_type == 'A':
+                file_details_dict = process_single_file(run_number, source_obj, input_data_dict['filePath'], consumer_logger,
+                                                    input_data_dict, table_name,last_iteration_files_details, source_sub_type, username, password)
                 # add logic to insert the file details into table
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
@@ -383,28 +436,29 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
                 raise Exception("There are no files specified.. Kindly check the request..")
         elif isDir:
-
             consumer_logger.info("Given source is a path. List of files need to be considered.")
-            files_list = ftpObj.list_files(inputData_dict["filePath"])
+            files_list = source_obj.list_files(input_data_dict["filePath"])
             consumer_logger.info(f"Fetched files from the path : {files_list}")
             to_delete = []
             for file in last_iteration_files_details:
                 if file['filename'] not in files_list:
                     to_delete.append(file['filename'])
-            to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
-
-            print(SF_DELETE_OLD_DETAILS_QUERY)
-            SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace(
-                "FILES", to_delete_mysql_formatted)
-            sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
-            # run delete query to remove old files
+            if len(to_delete) != 0:
+                to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
+                print(f"Older files to be deleted: {to_delete_mysql_formatted}")
+                SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace(
+                    "FILES", to_delete_mysql_formatted)
+                print(SF_DELETE_OLD_DETAILS_QUERY1)
+                sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
+            else:
+                print("No older files to delete.")
 
             file_details_list = []
             consumer_logger.info("First time dump processing all the files..")
             for file in files_list:
-                fully_qualified_file = inputData_dict["filePath"] + file
-                file_details_dict = process_single_file(ftpObj, fully_qualified_file, consumer_logger, table_name,
-                                                        last_iteration_files_details)
+                fully_qualified_file = input_data_dict["filePath"] + file
+                file_details_dict = process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, table_name,
+                                                        last_iteration_files_details, source_sub_type, username, password)
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
@@ -419,8 +473,8 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             raise Exception("Wrong Input...raising Exception..")
         return table_name
     except Exception as e:
-        print(f"Except occurred. Please look into it. {str(e)}")
-        consumer_logger.info(f"Except occurred. Please look into it. {str(e)}")
+        print(f"Except occurred. Please look into it. {str(e)} {str(traceback.format_exc())}")
+        consumer_logger.info(f"Except occurred. Please look into it. {str(e)} {str(traceback.format_exc())}")
         raise Exception(str(e))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
@@ -428,11 +482,11 @@ def process_sftp_ftp_nfs_request(data_source_id, source_table, run_number, data_
             sf_conn.close()
 
 
-def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logger, inputData_dict,
-                        table_name, last_iteration_files_details):
+def process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,
+                        table_name, last_iteration_files_details, source_sub_type, username = None, password = None):
     try:
         file_details_dict = {}
-        isOldFile = False
+        is_old_file = False
         consumer_logger.info("Processing file for the first time...")
         file = fully_qualified_file.split("/")[-1]
         if file.split(".")[-1] == "" or file.split(".")[-1] == "csv" or file.split(".")[-1] == "txt" or file.split(".")[-1] == "gz":
@@ -440,59 +494,85 @@ def process_single_file(run_number, ftpObj, fully_qualified_file, consumer_logge
         else:
             consumer_logger.info("The given file is not in required extension. ")
             raise Exception("The given file is not in required extension. ")
-        meta_data = ftpObj.get_file_metadata(fully_qualified_file)  # metadata from ftp
-        consumer_logger.info(f"Meta data fetched successfully for file :{file} Meta data : {meta_data}")
+        meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
+        consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
         if run_number != 0:
-            last_iteration_file_names_list = [i['filename'] for i in last_iteration_files_details]
-            consumer_logger.info(f"last iteration files are {last_iteration_file_names_list}")
+            last_iteration_file_names_list = [i["filename"] for i in last_iteration_files_details]
+            consumer_logger.info(f"last iteration files are {str(last_iteration_file_names_list)}")
             if file in last_iteration_file_names_list:
-                isOldFile = True
+                is_old_file = True
                 consumer_logger.info("Found filename in last_iteration_file details. Checking for metadata..")
                 file_index = last_iteration_file_names_list.index(file)
                 if str(meta_data['size']) == last_iteration_files_details[file_index]['size'] and str(meta_data['last_modified']) == last_iteration_files_details[file_index]['last_modified_time']:
-                    consumer_logger.info("File" + file + " already processed last time.. So skipping the file.")
+                    consumer_logger.info("File " + file + " already processed last time.. So skipping the file.")
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
-
-        ftpObj.download_file(fully_qualified_file, FILE_PATH + file)
-        line_count = sum(1 for _ in open(FILE_PATH + file, 'r'))
+        if source_sub_type != 'A':
+            source_obj.download_file(fully_qualified_file, FILE_PATH + file)
+            line_count = sum(1 for _ in open(FILE_PATH + file, 'r'))
+            file_details_dict["count"] = line_count
         file_details_dict["filename"] = file
-        file_details_dict["count"] = line_count
         file_details_dict["size"] = meta_data["size"]
         file_details_dict["last_modified_time"] = meta_data["last_modified"]
 
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        field_delimiter = inputData_dict["delimiter"]
-        stage_name = "STAGE_" + table_name
-        sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name}"
-        file_format = f"FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"'  "
-        if inputData_dict['isHeaderExists'] == 'true':
-            header_exists = ", SKIP_HEADER =1"
+        field_delimiter = input_data_dict["delimiter"]
+        if input_data_dict['isHeaderExists'] == 'true':
+            header_exists = ", SKIP_HEADER = 1"
         else:
             header_exists = ""
         if file.split(".")[-1] == "gz":
             compression = " , COMPRESSION = GZIP"
         else:
-            compression = " , COMPRESSION = GZIP"
-        sf_create_stage_query = sf_create_stage_query + file_format + header_exists +  compression + ")"
-        consumer_logger.info(f"Executing query: {sf_create_stage_query}")
-        sf_cursor.execute(sf_create_stage_query)
-        sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "
-        consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
-        sf_cursor.execute(sf_put_file_stage_query)
-        field_delimiter = inputData_dict['delimiter']
-        header_list = inputData_dict['headerValue'].split(str(field_delimiter))
-        stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
-
-        if isOldFile:
+            compression = ""
+            
+        if is_old_file:
             sf_delete_old_details_query = f"delete from {table_name} where filename = '{file}'"
             sf_cursor.execute(sf_delete_old_details_query)
-        sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
-        consumer_logger.info(f"Executing query: {sf_copy_into_query}")
-        sf_cursor.execute(sf_copy_into_query)
+        if source_sub_type != 'A':
+            stage_name = "STAGE_" + table_name
+            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name}"
+            file_format = f"FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"'  "
+
+            sf_create_stage_query = sf_create_stage_query + file_format + header_exists + compression + ")"
+            consumer_logger.info(f"Executing query: {sf_create_stage_query}")
+            sf_cursor.execute(sf_create_stage_query)
+            sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "
+            consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
+            sf_cursor.execute(sf_put_file_stage_query)
+            field_delimiter = input_data_dict['delimiter']
+            header_list = input_data_dict['headerValue'].split(str(field_delimiter))
+            stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
+            sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
+            consumer_logger.info(f"Executing query: {sf_copy_into_query}")
+            sf_cursor.execute(sf_copy_into_query)
+        else:
+            sf_copy_into_query = f"copy into {table_name} FROM {fully_qualified_file} CREDENTIALS=(AWS_KEY_ID='{username}'" \
+                                 f" AWS_SECRET_KEY='{password}') FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = '{field_delimiter}' " \
+                                 f"FIELD_OPTIONALLY_ENCLOSED_BY='\"' ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE {header_exists} {compression})"
+            consumer_logger.info(f"Executing query: {sf_copy_into_query}")
+            sf_cursor.execute(sf_copy_into_query)
+            sf_update_query = f"update {table_name} set filename = '{file}' where filename is null"
+            consumer_logger.info(f"Executing query: {sf_update_query}")
+            sf_cursor.execute(sf_update_query)
+            file_details_dict["count"] = sf_cursor.rowcount
         return file_details_dict
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
