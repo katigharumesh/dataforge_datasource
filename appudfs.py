@@ -116,7 +116,7 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                 #mysql_cursor.execute(DELETE_FILE_DETAILS, (data_source_schedule_id, run_number, data_source_mapping_id))
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name,
-                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA'))
+                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA','C',''))
                 return source_table
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
@@ -270,6 +270,12 @@ def perform_conversion(filename):
                 print(line.replace('\r\n', '\n'), end='')
 
 
+def validate_header(file, header, delimiter):
+    with open(file, 'r') as f:
+        first_line = f.readline()
+    if len(first_line.split(delimiter)) == len(header.split(delimiter)):
+        return True
+    return False
 
 class LocalFileTransfer:
     def __init__(self, mount_path):
@@ -420,7 +426,9 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                     count = file_details_dict["count"]
                     size = file_details_dict["size"]
                     last_modified_time = file_details_dict["last_modified_time"]
-                    mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
+                    file_status = file_details_dict['status']
+                    error_desc = file_details_dict['error_msg']
+                    mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
             elif len(files_list) == 1 or source_sub_type == 'A':
                 file_details_dict = process_single_file(run_number, source_obj, input_data_dict['filePath'], consumer_logger,
@@ -430,7 +438,9 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
-                mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
+                file_status = file_details_dict['status']
+                error_desc = file_details_dict['error_msg']
+                mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time,file_status,error_desc))
                 file_details_list.append(file_details_dict)
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
@@ -463,9 +473,11 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                 count = file_details_dict["count"]
                 size = file_details_dict["size"]
                 last_modified_time = file_details_dict["last_modified_time"]
+                file_status = file_details_dict['status']
+                error_desc = file_details_dict['error_msg']
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     data_source_schedule_id, run_number, request_id, count, fileName,
-                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time))
+                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
 
         else:
@@ -493,7 +505,10 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             consumer_logger.info("The given file is in required extension...")
         else:
             consumer_logger.info("The given file is not in required extension. ")
-            raise Exception("The given file is not in required extension. ")
+            file_details_dict['filename'] = file
+            file_details_dict['status'] = 'E'
+            file_details_dict['error_msg'] = 'The given file is not in required extension.'
+            return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
         if run_number != 0:
@@ -506,6 +521,8 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
                 if str(meta_data['size']) == last_iteration_files_details[file_index]['size'] and str(meta_data['last_modified']) == last_iteration_files_details[file_index]['last_modified_time']:
                     consumer_logger.info("File " + file + " already processed last time.. So skipping the file.")
                     file_details_dict = last_iteration_files_details[file_index]
+                    file_details_dict['status'] = 'C'
+                    file_details_dict['error_msg'] = ''
                     return file_details_dict
         if source_sub_type != 'A':
             source_obj.download_file(fully_qualified_file, FILE_PATH + file)
@@ -514,6 +531,16 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
         file_details_dict["filename"] = file
         file_details_dict["size"] = meta_data["size"]
         file_details_dict["last_modified_time"] = meta_data["last_modified"]
+        if source_sub_type != 'A':
+            if not validate_header(FILE_PATH + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
+                file_details_dict['status'] = 'E'
+                file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
+                return file_details_dict
+        else:
+            if not source_obj.header_validation(fully_qualified_file, input_data_dict['headerValue'], input_data_dict['delimiter']):
+                file_details_dict['status'] = 'E'
+                file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
+                return file_details_dict
 
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -523,7 +550,7 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             header_exists = ", SKIP_HEADER = 1"
         else:
             header_exists = ""
-        if (file.split(".")[-1] == "gz"):
+        if file.split(".")[-1] == "gz":
             compression = " , COMPRESSION = GZIP"
         else:
             compression = ""
@@ -548,6 +575,8 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
             consumer_logger.info(f"Executing query: {sf_copy_into_query}")
             sf_cursor.execute(sf_copy_into_query)
+            file_details_dict['status'] = 'C'
+            file_details_dict['error_msg'] = ''
         else:
             sf_copy_into_query = f"copy into {table_name} FROM {fully_qualified_file} CREDENTIALS=(AWS_KEY_ID='{username}'" \
                                  f" AWS_SECRET_KEY='{password}') FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = '{field_delimiter}' " \
@@ -558,6 +587,8 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             consumer_logger.info(f"Executing query: {sf_update_query}")
             sf_cursor.execute(sf_update_query)
             file_details_dict["count"] = sf_cursor.rowcount
+            file_details_dict['status'] = 'C'
+            file_details_dict['error_msg'] = ''
         return file_details_dict
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")

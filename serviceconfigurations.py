@@ -85,8 +85,8 @@ FETCH_SOURCE_DETAILS = 'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name
                        'SUPPRESSION_DATASOURCE_MAPPING a join ' \
                        'SUPPRESSION_SOURCE_TYPES b on a.sourceId=b.id where a.dataSourceId=REQUEST_ID '
 
-INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time)' \
-                      f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
+                      f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
 
 DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceScheduleId=%s and ' \
                       f'runNumber=%s '
@@ -115,7 +115,7 @@ RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggin
 SUBJECT = "PROXY TESTING REPORT"
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from SOURCE_TABLE where filename in (FILES)"
-FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count from SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=ID and runNumber=RUNNUMBER "  # get last iteration files data
+FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count from SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=ID and runNumber=RUNNUMBER and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
 FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
