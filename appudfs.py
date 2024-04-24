@@ -535,11 +535,13 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             if not validate_header(FILE_PATH + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
                 file_details_dict['status'] = 'E'
                 file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
+                consumer_logger.info('The header is not matching with the given header. Skipping the file.')
                 return file_details_dict
         else:
             if not source_obj.header_validation(fully_qualified_file, input_data_dict['headerValue'], input_data_dict['delimiter']):
                 file_details_dict['status'] = 'E'
                 file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
+                consumer_logger.info('The header is not matching with the given header. Skipping the file.')
                 return file_details_dict
 
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
