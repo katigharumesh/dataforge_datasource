@@ -110,8 +110,8 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "43"
-        run_number = "0"
+        request_id = "46"
+        run_number = "1"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])
@@ -120,3 +120,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}")
         exit_program(-1)
+

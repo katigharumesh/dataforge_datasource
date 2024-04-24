@@ -1,5 +1,4 @@
-
-# import statements
+#import statements
 
 import glob
 import json
@@ -106,8 +105,8 @@ STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
 SOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_MAPPING_'
 MAIN_DATASOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_'
 
-OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<',
-                    'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
+OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'Between': 'between', 'Greater Than': '>', 'less than': '<',
+                    'Equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
                     'not exists in': 'not in', 'predefined daterange': '>='}
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
@@ -119,6 +118,7 @@ FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,si
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
 FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
+
 
 
 

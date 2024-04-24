@@ -533,12 +533,14 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
         file_details_dict["last_modified_time"] = meta_data["last_modified"]
         if source_sub_type != 'A':
             if not validate_header(FILE_PATH + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
+                file_details_dict["count"] = 0
                 file_details_dict['status'] = 'E'
                 file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
                 consumer_logger.info('The header is not matching with the given header. Skipping the file.')
                 return file_details_dict
         else:
             if not source_obj.header_validation(fully_qualified_file, input_data_dict['headerValue'], input_data_dict['delimiter']):
+                file_details_dict["count"] = 0
                 file_details_dict['status'] = 'E'
                 file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
                 consumer_logger.info('The header is not matching with the given header. Skipping the file.')
@@ -595,5 +597,6 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
+
 
 
