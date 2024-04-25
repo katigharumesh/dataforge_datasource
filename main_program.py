@@ -7,6 +7,7 @@ sources_loaded = []
 data_sources_count=0
 
 def load_data_sources_producer(sources_queue, request_id, queue_empty_condition, thread_count, main_logger):
+    #mysql connection closing
     global data_sources_count
     main_logger.info(f"Producer execution started: {time.ctime()} ")
     main_logger.info(f"Acquiring mysql connection...")
@@ -26,7 +27,7 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
         for _ in range(thread_count):  # Put sentinel value for each consumer
             sources_queue.put(None)  # Put sentinel value in the queue
         queue_empty_condition.notify_all()  # Notify all consumer threads
-    main_logger.info(f"Producer execution ended: {time.ctime()} ")
+    main_logger.info(f"Producer Execution Ended: {time.ctime()} ")
 
 
 # Consumer thread function
@@ -57,13 +58,16 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
 # Main function
 def main(request_id, run_number):
     main_logger = create_logger("main_program", log_to_stdout=True)
+
     if os.path.exists(PID_FILE):
         main_logger.info("Script execution is already in progress, hence skipping the execution.")
         send_skype_alert("Script execution is already in progress, hence skipping the execution.")
+        # update SUPPRESSION_DATASOURCE_SCHEDULE_STATUS to status='E' and update error details - by surya function
+        # update next schedule in SUPPRESSION_DATASOURCE_SCHEDULE  - by surya function
         sys.exit(-1)
     Path(PID_FILE).touch()
     start_time = time.time()
-    main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" epoch time: {start_time}")
+    main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
     delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
     mysql_cursor = mysql_conn.cursor(dictionary=True)

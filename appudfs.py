@@ -417,7 +417,8 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
         if isFile:
             file_details_list = []
             files_list = input_data_dict['filePath'].split(",")
-            if len(files_list) > 1 and source_sub_type != 'A':
+            consumer_logger.info("File List: "+files_list)
+            if len(files_list) >= 1 :
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
                     file_details_dict = process_single_file(run_number, source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
@@ -430,18 +431,6 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                     error_desc = file_details_dict['error_msg']
                     mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
-            elif len(files_list) == 1 or source_sub_type == 'A':
-                file_details_dict = process_single_file(run_number, source_obj, input_data_dict['filePath'], consumer_logger,
-                                                    input_data_dict, table_name,last_iteration_files_details, source_sub_type, username, password)
-                # add logic to insert the file details into table
-                fileName = file_details_dict["filename"]
-                count = file_details_dict["count"]
-                size = file_details_dict["size"]
-                last_modified_time = file_details_dict["last_modified_time"]
-                file_status = file_details_dict['status']
-                error_desc = file_details_dict['error_msg']
-                mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time,file_status,error_desc))
-                file_details_list.append(file_details_dict)
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
                 raise Exception("There are no files specified.. Kindly check the request..")
@@ -464,7 +453,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                 print("No older files to delete.")
 
             file_details_list = []
-            consumer_logger.info("First time dump processing all the files..")
+            consumer_logger.info("First time/existing files processing..")
             for file in files_list:
                 fully_qualified_file = input_data_dict["filePath"] + file
                 file_details_dict = process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
