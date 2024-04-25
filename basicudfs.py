@@ -38,7 +38,7 @@ def create_logger(base_logger_name: object, log_file_path: object = LOG_PATH, lo
     logger.setLevel(logging.DEBUG)
 
     # Create a file handler, set the formatter, and add it to the logger
-    file_handler = logging.FileHandler(str(log_file_path) + '/' + str(base_logger_name) + ".log")
+    file_handler = logging.FileHandler(str(log_file_path) + '/' + str(logger_name) + ".log")
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 

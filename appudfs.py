@@ -1,9 +1,8 @@
 from serviceconfigurations import *
+from basicudfs import *
 
-
-def load_data_source(source, main_datasource_details, consumer_logger):
+def load_data_source(source, main_datasource_details):
     try:
-        consumer_logger.info(f"Processing task: {str(source)}")
         data_source_mapping_id = source['id']
         data_source_id = source['dataSourceId']
         source_id = source['sourceId']
@@ -23,6 +22,8 @@ def load_data_source(source, main_datasource_details, consumer_logger):
         data_source_schedule_id = main_datasource_details['dataSourceScheduleId']
         run_number = main_datasource_details['runNumber']
         input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
+        consumer_logger = create_logger(base_logger_name=f"source_{str(data_source_mapping_id)}_{str(data_source_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(data_source_id)}/{str(run_number)}/", log_to_stdout=True)
+        consumer_logger.info(f"Processing task: {str(source)}")
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
@@ -44,15 +45,15 @@ def load_data_source(source, main_datasource_details, consumer_logger):
                 source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                             data_source_schedule_id, source_sub_type,
                                                             input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
-                                                            consumer_logger=consumer_logger,
-                                                            request_id=data_source_mapping_id)
+                                                            consumer_logger= consumer_logger,
+                                                            request_id=data_source_mapping_id , hostname="", port="", username="", password="")
                 return source_table
             elif source_sub_type == "A":
                 source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                          data_source_schedule_id,source_sub_type,
                                                          input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
                                                          consumer_logger=consumer_logger,
-                                                         request_id=data_source_mapping_id, username=username,
+                                                         request_id=data_source_mapping_id, hostname="", port="", username=username,
                                                          password=password)
                 return source_table
             elif source_sub_type == "D":
@@ -367,8 +368,8 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             source_obj = FileTransfer(hostname, port, username, password)
             source_obj.connect()
             consumer_logger.info("SFTP/FTP connection established successfully.")
-        elif source_sub_type == "N":
-            consumer_logger.info("Request initiated to process.. File source: NFS ")
+        elif source_sub_type in ("N", "D"):
+            consumer_logger.info("Request initiated to process.. File source: NFS/DESKTOP ")
             source_obj = LocalFileTransfer(input_data_dict["filePath"])
         elif source_sub_type == "A":
             consumer_logger.info("Request initiated to process.. File source: AWS ")

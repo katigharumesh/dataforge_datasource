@@ -39,7 +39,7 @@ import boto3
 #LOG_PATH = r"D:\tmp\data_forge\app_logs"
 SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
 LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
-PID_FILE = SCRIPT_PATH + "/app.pid"
+PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"

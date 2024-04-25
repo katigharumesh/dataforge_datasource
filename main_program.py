@@ -1,3 +1,5 @@
+import os
+
 from serviceconfigurations import *
 from basicudfs import *
 from appudfs import *
@@ -7,7 +9,7 @@ sources_loaded = []
 data_sources_count=0
 
 def load_data_sources_producer(sources_queue, request_id, queue_empty_condition, thread_count, main_logger):
-    #mysql connection closing
+    # mysql connection closing
     global data_sources_count
     main_logger.info(f"Producer execution started: {time.ctime()} ")
     main_logger.info(f"Acquiring mysql connection...")
@@ -17,7 +19,7 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
     main_logger.info(f"executing query: {FETCH_SOURCE_DETAILS.replace('REQUEST_ID', request_id)}")
     mysql_cursor.execute(FETCH_SOURCE_DETAILS.replace("REQUEST_ID", request_id))
     data_sources = mysql_cursor.fetchall()
-    data_sources_count=len(data_sources)
+    data_sources_count= len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
     for source in data_sources:
         sources_queue.put(source)
@@ -28,44 +30,46 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
             sources_queue.put(None)  # Put sentinel value in the queue
         queue_empty_condition.notify_all()  # Notify all consumer threads
     main_logger.info(f"Producer Execution Ended: {time.ctime()} ")
+    mysql_conn.close()
 
 
 # Consumer thread function
 def load_data_sources_consumer(sources_queue, main_datasource_details, queue_empty_condition,
-                               consumer_logger):
+                               main_logger):
     try:
-        consumer_logger.info(f"Consumer execution started: {time.ctime()}")
+        main_logger.info(f"Consumer execution started: {time.ctime()}")
         while True:
             with queue_empty_condition:
                 while sources_queue.empty():  # Wait for tasks to be available in the queue
                     queue_empty_condition.wait()
                 source = sources_queue.get()  # Get task from the queue
-                consumer_logger.info(str(source))
+                main_logger.info(f"Processing source : str(source)")
             if source is None:  # Sentinel value indicating end of tasks
-                consumer_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
+                main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                 break
-            consumer_logger.info("Calling function ... load_data_source")
-            sources_loaded.append(load_data_source(source, main_datasource_details, consumer_logger))
+            main_logger.info("Calling function ... load_data_source")
+            sources_loaded.append(load_data_source(source, main_datasource_details))
             sources_queue.task_done()  # Notify the queue that the task is done
-        consumer_logger.info(f"Consumer exiting")
+        main_logger.info(f"Consumer exiting")
         print("Consumer exiting")
     except Exception as e:
         print(f"Exception occurred: {str(e)}")
         # update status to error
-        consumer_logger.error(f"Exception occurred: {str(e)}")
+        main_logger.error(f"Exception occurred: {str(e)}")
 
 
 # Main function
 def main(request_id, run_number):
-    main_logger = create_logger("main_program", log_to_stdout=True)
-
-    if os.path.exists(PID_FILE):
+    os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
+    main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+    pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
+    if os.path.exists(str(pid_file)):
         main_logger.info("Script execution is already in progress, hence skipping the execution.")
         send_skype_alert("Script execution is already in progress, hence skipping the execution.")
         # update SUPPRESSION_DATASOURCE_SCHEDULE_STATUS to status='E' and update error details - by surya function
         # update next schedule in SUPPRESSION_DATASOURCE_SCHEDULE  - by surya function
-        sys.exit(-1)
-    Path(PID_FILE).touch()
+        return
+    Path(pid_file).touch()
     start_time = time.time()
     main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
     delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
@@ -76,15 +80,14 @@ def main(request_id, run_number):
     sources_queue = queue.Queue()
     queue_empty_condition = threading.Condition()
     # Preparing individuals tables for given data sources
-    producer_thread = threading.Thread(target=load_data_sources_producer, args=
-    (sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
+    producer_thread = threading.Thread(target=load_data_sources_producer, args=(sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
     producer_thread.start()
     # Create and start consumer threads
     consumer_threads = []
     for i in range(THREAD_COUNT):
-        consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
+        #consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
         consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
-            sources_queue, main_datasource_details, queue_empty_condition, consumer_logger))
+            sources_queue, main_datasource_details, queue_empty_condition, main_logger))
         consumer_thread.start()
         consumer_threads.append(consumer_thread)
     # Wait for producer thread to finish
@@ -101,14 +104,14 @@ def main(request_id, run_number):
               f" Considering the datasource preparation request as failed.")
         mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
         mysql_cursor.execute(ERROR_SCHEDULE_STATUS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
-        exit_program(-1)
+        exit_program(-1,pid_file)
     main_logger.info("All sources are successfully processed.")
     print("All sources are successfully processed.")
     # Preparing request level main_datasource
     create_main_datasource(sources_loaded, main_datasource_details)
     end_time = time.time()
     main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
-    exit_program(0)
+    exit_program(0,pid_file)
 
 
 
