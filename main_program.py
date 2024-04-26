@@ -1,4 +1,5 @@
 import os
+import time
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -17,8 +18,8 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
     mysql_cursor = mysql_conn.cursor(dictionary=True)
     main_logger.info(f"Fetch data sources for the request id: {request_id}")
-    main_logger.info(f"executing query: {FETCH_SOURCE_DETAILS,(request_id)}")
-    mysql_cursor.execute(FETCH_SOURCE_DETAILS,(request_id))
+    main_logger.info(f"Executing query: {FETCH_SOURCE_DETAILS,(request_id,'')}")
+    mysql_cursor.execute(FETCH_SOURCE_DETAILS,(request_id,''))
     data_sources = mysql_cursor.fetchall()
     data_sources_count= len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
@@ -67,23 +68,26 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
 # Main function
 def main(request_id, run_number):
     try:
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I','','', request_id, run_number))
         os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
         main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        main_logger.info(f"Executing : {MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number)}")
+        mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
+        main_logger.info(f"Executing : {UPDATE_SCHEDULE_STATUS, ('I','0','', request_id, run_number)}")
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I','0','', request_id, run_number))
         pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
         if os.path.exists(str(pid_file)):
             main_logger.info("Script execution is already in progress, hence skipping the execution.")
             send_skype_alert("Script execution is already in progress, hence skipping the execution.")
-            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '', 'Due to PID existence', request_id, run_number))
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
             update_next_schedule_due(request_id, run_number, main_logger)
             return
         Path(pid_file).touch()
         start_time = time.time()
         main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
         delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
+        main_logger.info(f"Fetch main data source details, executing : {FETCH_MAIN_DATASOURCE_DETAILS,(request_id, run_number)}")
         mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS,(request_id, run_number))
         main_datasource_details = mysql_cursor.fetchone()
         sources_queue = queue.Queue()
@@ -98,6 +102,7 @@ def main(request_id, run_number):
             consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
                 sources_queue, main_datasource_details, queue_empty_condition, main_logger))
             consumer_thread.start()
+            time.sleep(10)
             consumer_threads.append(consumer_thread)
         # Wait for producer thread to finish
         producer_thread.join()
@@ -112,7 +117,7 @@ def main(request_id, run_number):
             print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
                   f" Considering the datasource preparation request as failed.")
             mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
-            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '', f'Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources.', request_id, run_number))
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources.', request_id, run_number))
             update_next_schedule_due(request_id, run_number, main_logger)
             os.remove(pid_file)
             return
@@ -125,6 +130,7 @@ def main(request_id, run_number):
         os.remove(pid_file)
     except Exception as e:
         main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
+        os.remove(pid_file)
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -132,15 +138,15 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "42"
-        run_number = "7"
+        request_id = "7"
+        run_number = "2"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])
         main(request_id, run_number)
 
     except Exception as e:
-        print(f"Exception raised . Please look into this.... {str(e)}")
+        print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
 
 

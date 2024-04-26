@@ -45,7 +45,7 @@ LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
 
-THREAD_COUNT = 20  # thread count
+THREAD_COUNT = 2 # thread count
 
 skype_configurations = {
     'url': 'http://zds-prod-ext-greenapp1-vip.bo3.e-dialog.com/sendSkypeAlerts/index.php?key=',
@@ -67,7 +67,16 @@ MYSQL_CONFIGS = {
     "autocommit": True,
     "allow_local_infile": True
 }
-
+"""
+MYSQL_CONFIGS = {
+    'user': 'pmtauser',
+    'password': 'pmta12#$',
+    'host': '10.100.6.181',
+    'database': 'CAMPAIGN_TOOL_QA',
+    'autocommit': True,
+    'allow_local_infile': True
+}
+"""
 SCHEDULE_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE'
 SCHEDULE_STATUS_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE_STATUS'
 DATASOURCE_TABLE = 'SUPPRESSION_DATASOURCE'
@@ -83,7 +92,7 @@ FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.nam
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        f'{DATASOURCE_MAPPING_TABLE} a join ' \
-                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s '
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s %s '
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
                       f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
@@ -93,7 +102,7 @@ DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceSchedul
 
 INSERT_SCHEDULE_STATUS = f'insert into {SCHEDULE_STATUS_TABLE}(dataSourceId,dataSourceScheduleId,runNumber,status,createdDate) values (%s,%s,%s,%s,%s)'
 
-UPDATE_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='%s', recordCount=%s, errorReason=%s where dataSourceId=%s and runNumber=%s "
+UPDATE_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where dataSourceId=%s and runNumber=%s "
 
 MAKE_SCHEDULE_IN_PROGRESS = f"update {SCHEDULE_TABLE} set status = 'I' where dataSourceId=%s and runNumber=%s "
 
@@ -110,8 +119,8 @@ STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
 SOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_MAPPING_'
 MAIN_DATASOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_'
 
-OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'Between': 'between', 'Greater Than': '>', 'less than': '<',
-                    'Equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
+OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<',
+                    'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
                     'not exists in': 'not in', 'predefined daterange': '>='}
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
