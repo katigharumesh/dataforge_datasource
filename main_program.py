@@ -60,62 +60,69 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
 
 # Main function
 def main(request_id, run_number):
-    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-    mysql_cursor = mysql_conn.cursor(dictionary=True)
-    mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
-    mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I', request_id, run_number))
-    os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
-    main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
-    pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
-    if os.path.exists(str(pid_file)):
-        main_logger.info("Script execution is already in progress, hence skipping the execution.")
-        send_skype_alert("Script execution is already in progress, hence skipping the execution.")
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', request_id, run_number))
-        update_next_schedule_due(request_id, run_number, main_logger)
-        return
-    Path(pid_file).touch()
-    start_time = time.time()
-    main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
-    delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
-    mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS.replace("REQUEST_ID", request_id).replace("RUN_NUMBER", run_number))
-    main_datasource_details = mysql_cursor.fetchone()
-    sources_queue = queue.Queue()
-    queue_empty_condition = threading.Condition()
-    # Preparing individuals tables for given data sources
-    producer_thread = threading.Thread(target=load_data_sources_producer, args=(sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
-    producer_thread.start()
-    # Create and start consumer threads
-    consumer_threads = []
-    for i in range(THREAD_COUNT):
-        #consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
-        consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
-            sources_queue, main_datasource_details, queue_empty_condition, main_logger))
-        consumer_thread.start()
-        consumer_threads.append(consumer_thread)
-    # Wait for producer thread to finish
-    producer_thread.join()
+    try:
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I', request_id, run_number))
+        os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
+        main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+        pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
+        if os.path.exists(str(pid_file)):
+            main_logger.info("Script execution is already in progress, hence skipping the execution.")
+            send_skype_alert("Script execution is already in progress, hence skipping the execution.")
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', request_id, run_number))
+            update_next_schedule_due(request_id, run_number, main_logger)
+            return
+        Path(pid_file).touch()
+        start_time = time.time()
+        main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
+        delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
+        mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS.replace("REQUEST_ID", request_id).replace("RUN_NUMBER", run_number))
+        main_datasource_details = mysql_cursor.fetchone()
+        sources_queue = queue.Queue()
+        queue_empty_condition = threading.Condition()
+        # Preparing individuals tables for given data sources
+        producer_thread = threading.Thread(target=load_data_sources_producer, args=(sources_queue, request_id, queue_empty_condition, THREAD_COUNT, main_logger))
+        producer_thread.start()
+        # Create and start consumer threads
+        consumer_threads = []
+        for i in range(THREAD_COUNT):
+            #consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
+            consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
+                sources_queue, main_datasource_details, queue_empty_condition, main_logger))
+            consumer_thread.start()
+            consumer_threads.append(consumer_thread)
+        # Wait for producer thread to finish
+        producer_thread.join()
 
-    # Wait for consumer threads to finish
-    for consumer_thread in consumer_threads:
-        consumer_thread.join()
-    print("sources loaded: " + str(sources_loaded))
-    if len(sources_loaded) != data_sources_count:
-        main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} "
-                         f"sources. Considering the datasource preparation request as failed.")
-        print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
-              f" Considering the datasource preparation request as failed.")
-        mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', request_id, run_number))
-        update_next_schedule_due(request_id, run_number, main_logger)
+        # Wait for consumer threads to finish
+        for consumer_thread in consumer_threads:
+            consumer_thread.join()
+        print("sources loaded: " + str(sources_loaded))
+        if len(sources_loaded) != data_sources_count:
+            main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} "
+                             f"sources. Considering the datasource preparation request as failed.")
+            print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
+                  f" Considering the datasource preparation request as failed.")
+            mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', request_id, run_number))
+            update_next_schedule_due(request_id, run_number, main_logger)
+            os.remove(pid_file)
+            return
+        main_logger.info("All sources are successfully processed.")
+        print("All sources are successfully processed.")
+        # Preparing request level main_datasource
+        create_main_datasource(sources_loaded, main_datasource_details)
+        end_time = time.time()
+        main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
         os.remove(pid_file)
-        return
-    main_logger.info("All sources are successfully processed.")
-    print("All sources are successfully processed.")
-    # Preparing request level main_datasource
-    create_main_datasource(sources_loaded, main_datasource_details)
-    end_time = time.time()
-    main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
-    os.remove(pid_file)
+    except Exception as e:
+        main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysql_cursor.close()
+            mysql_conn.close()
 
 if __name__ == "__main__":
     try:
