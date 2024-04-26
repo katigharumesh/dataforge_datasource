@@ -77,13 +77,13 @@ FILE_DETAILS_TABLE = 'SUPPRESSION_DATASOURCE_FILE_DETAILS'
 
 FETCH_MAIN_DATASOURCE_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
                                 f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId,b.runNumber from {DATASOURCE_TABLE} a ' \
-                                f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=REQUEST_ID and b.runNumber=RUN_NUMBER'
+                                f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
 
-FETCH_SOURCE_DETAILS = 'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
+FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
-                       'SUPPRESSION_DATASOURCE_MAPPING a join ' \
-                       'SUPPRESSION_SOURCE_TYPES b on a.sourceId=b.id where a.dataSourceId=REQUEST_ID '
+                       f'{DATASOURCE_MAPPING_TABLE} a join ' \
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s '
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
                       f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
@@ -93,7 +93,7 @@ DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceSchedul
 
 INSERT_SCHEDULE_STATUS = f'insert into {SCHEDULE_STATUS_TABLE}(dataSourceId,dataSourceScheduleId,runNumber,status,createdDate) values (%s,%s,%s,%s,%s)'
 
-UPDATE_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='%s' where dataSourceId=%s and runNumber=%s "
+UPDATE_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='%s', recordCount=%s, errorReason=%s where dataSourceId=%s and runNumber=%s "
 
 MAKE_SCHEDULE_IN_PROGRESS = f"update {SCHEDULE_TABLE} set status = 'I' where dataSourceId=%s and runNumber=%s "
 

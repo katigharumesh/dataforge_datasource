@@ -147,14 +147,17 @@ def create_main_datasource(sources_loaded, main_datasource_details):
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select {filter_match_fields} from {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
+        if 'email' in str(filter_match_fields).lower().split(','):
+            sf_cursor.execute(f"update {temp_datasource_table} set email=lower(trim(email))")
+            if 'md5hash' not in str(filter_match_fields).lower().split(','):
+                sf_cursor.execute(f"alter table {temp_datasource_table} add column md5hash varchar as md5(email)")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
         record_count = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(f"update {SCHEDULE_STATUS_TABLE} set status='C', recordCount={record_count}"
-                             f" where dataSourceScheduleId={data_source_schedule_id} and runNumber={run_number}")
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('C', record_count, '', data_source_id, run_number))
     except Exception as e:
         print(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} ")
