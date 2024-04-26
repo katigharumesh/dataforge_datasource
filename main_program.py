@@ -7,6 +7,7 @@ from appudfs import *
 global sources_loaded
 sources_loaded = []
 data_sources_count=0
+consumer_kill_condition = False
 
 def load_data_sources_producer(sources_queue, request_id, queue_empty_condition, thread_count, main_logger):
     # mysql connection closing
@@ -37,25 +38,30 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
 def load_data_sources_consumer(sources_queue, main_datasource_details, queue_empty_condition,
                                main_logger):
     try:
+        global consumer_kill_condition
         main_logger.info(f"Consumer execution started: {time.ctime()}")
         while True:
-            with queue_empty_condition:
-                while sources_queue.empty():  # Wait for tasks to be available in the queue
-                    queue_empty_condition.wait()
-                source = sources_queue.get()  # Get task from the queue
-                main_logger.info(f"Processing source : str(source)")
-            if source is None:  # Sentinel value indicating end of tasks
-                main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
+            if not consumer_kill_condition:
+                with queue_empty_condition:
+                    while sources_queue.empty():  # Wait for tasks to be available in the queue
+                        queue_empty_condition.wait()
+                    source = sources_queue.get()  # Get task from the queue
+                    main_logger.info(f"Processing source : str(source)")
+                if source is None:  # Sentinel value indicating end of tasks
+                    main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
+                    break
+                main_logger.info("Calling function ... load_data_source")
+                sources_loaded.append(load_data_source(source, main_datasource_details))
+                sources_queue.task_done()  # Notify the queue that the task is done
+            else:
                 break
-            main_logger.info("Calling function ... load_data_source")
-            sources_loaded.append(load_data_source(source, main_datasource_details))
-            sources_queue.task_done()  # Notify the queue that the task is done
-        main_logger.info(f"Consumer exiting")
-        print("Consumer exiting")
+            main_logger.info(f"Consumer exiting")
+            print("Consumer exiting")
     except Exception as e:
         print(f"Exception occurred: {str(e)}")
         # update status to error
         main_logger.error(f"Exception occurred: {str(e)}")
+        consumer_kill_condition = True
 
 
 # Main function
