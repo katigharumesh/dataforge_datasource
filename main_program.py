@@ -123,6 +123,7 @@ def main(request_id, run_number):
         print("All sources are successfully processed.")
         # Preparing request level main_datasource
         create_main_datasource(sources_loaded, main_datasource_details)
+        update_next_schedule_due(request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
         os.remove(pid_file)
