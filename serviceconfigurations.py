@@ -37,8 +37,9 @@ import boto3
 
 SCRIPT_PATH = r"D:\tmp\data_forge"
 LOG_PATH = r"D:\tmp\data_forge\app_logs"
-#SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
-#LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
+#SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
+#LOG_PATH = SCRIPT_PATH + "app_logs"
+FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -117,11 +118,10 @@ FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 SUBJECT = "PROXY TESTING REPORT"
 
-SF_DELETE_OLD_DETAILS_QUERY = "delete from SOURCE_TABLE where filename in (FILES)"
-FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,size,count from SUPPRESSION_DATASOURCE_FILE_DETAILS where dataSourceMappingId=ID and runNumber=RUNNUMBER and file_status='C' "  # get last iteration files data
-LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
-RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
-FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
+SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
+FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
+LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
+
 
 
 

@@ -1,3 +1,5 @@
+import os
+
 from serviceconfigurations import *
 from basicudfs import *
 
@@ -35,32 +37,13 @@ def load_data_source(source, main_datasource_details):
 
         source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
         if source_type == "F":
-            if source_sub_type == "S":
-                source_table = process_file_type_request(data_source_id, source_table, run_number,
+            temp_files_path = os.makedirs(f"{FILE_PATH}/{str(data_source_id)}/{str(run_number)}/{str(data_source_mapping_id)}")
+            source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                             data_source_schedule_id, source_sub_type, input_data_dict,
-                                                            mysql_cursor, consumer_logger, data_source_mapping_id, hostname,
+                                                            mysql_cursor, consumer_logger, data_source_mapping_id, temp_files_path, hostname,
                                                             int(port), username, password)
-                return source_table
-            elif source_sub_type == "N":
-                source_table = process_file_type_request(data_source_id, source_table, run_number,
-                                                            data_source_schedule_id, source_sub_type,
-                                                            input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
-                                                            consumer_logger= consumer_logger,
-                                                            request_id=data_source_mapping_id , hostname="", port="", username="", password="")
-                return source_table
-            elif source_sub_type == "A":
-                source_table = process_file_type_request(data_source_id, source_table, run_number,
-                                                         data_source_schedule_id,source_sub_type,
-                                                         input_data_dict=input_data_dict, mysql_cursor=mysql_cursor,
-                                                         consumer_logger=consumer_logger,
-                                                         request_id=data_source_mapping_id, hostname="", port="", username=username,
-                                                         password=password)
-                return source_table
-            elif source_sub_type == "D":
-                pass
-            else:
-                consumer_logger.info("Unknown source_sub_type selected")
-                raise Exception("Unknown source_sub_type selected")
+            return source_table
+
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
                 consumer_logger.info("Snowflake account mismatch. Pending implementation ...")
@@ -360,7 +343,7 @@ class ProcessS3Files:
 
 
 def process_file_type_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, input_data_dict, mysql_cursor,
-                                 consumer_logger, request_id,  hostname = None, port = None, username = None, password = None):
+                                 consumer_logger, request_id, temp_files_path, hostname = None, port = None, username = None, password = None):
     try:
         if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -391,9 +374,9 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
 
         last_iteration_files_details = []
         if run_number != 0:
-            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY.replace('REQUEST_ID',str(data_source_id)))
+            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id)))
             last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY.replace('ID',str(request_id)).replace('RUNNUMBER',str(last_successful_run_number)))
+            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(request_id), str(last_successful_run_number)))
             last_iteration_files_details = mysql_cursor.fetchall()
             consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
             # [filename,size,modified_time,count]
@@ -422,7 +405,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             if len(files_list) >= 1 :
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
-                    file_details_dict = process_single_file(run_number, source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
+                    file_details_dict = process_single_file(temp_files_path , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
                     fileName = file_details_dict["filename"]
                     count = file_details_dict["count"]
@@ -446,10 +429,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             if len(to_delete) != 0:
                 to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
                 print(f"Older files to be deleted: {to_delete_mysql_formatted}")
-                SF_DELETE_OLD_DETAILS_QUERY1 = SF_DELETE_OLD_DETAILS_QUERY.replace("SOURCE_TABLE", table_name).replace(
-                    "FILES", to_delete_mysql_formatted)
-                print(SF_DELETE_OLD_DETAILS_QUERY1)
-                sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY1)
+                sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY,(table_name, to_delete_mysql_formatted))
             else:
                 print("No older files to delete.")
 
@@ -457,7 +437,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             consumer_logger.info("First time/existing files processing..")
             for file in files_list:
                 fully_qualified_file = input_data_dict["filePath"] + file
-                file_details_dict = process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
+                file_details_dict = process_single_file(temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
                                                         last_iteration_files_details, source_sub_type, username, password)
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
@@ -484,7 +464,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             sf_conn.close()
 
 
-def process_single_file(run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,
+def process_single_file(temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,
                         table_name, last_iteration_files_details, source_sub_type, username = None, password = None):
     try:
         file_details_dict = {}
@@ -511,18 +491,16 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
                 if str(meta_data['size']) == last_iteration_files_details[file_index]['size'] and str(meta_data['last_modified']) == last_iteration_files_details[file_index]['last_modified_time']:
                     consumer_logger.info("File " + file + " already processed last time.. So skipping the file.")
                     file_details_dict = last_iteration_files_details[file_index]
-                    file_details_dict['status'] = 'C'
-                    file_details_dict['error_msg'] = ''
                     return file_details_dict
         if source_sub_type != 'A':
-            source_obj.download_file(fully_qualified_file, FILE_PATH + file)
-            line_count = sum(1 for _ in open(FILE_PATH + file, 'r'))
+            source_obj.download_file(fully_qualified_file, temp_files_path + file)
+            line_count = sum(1 for _ in open(temp_files_path + file, 'r'))
             file_details_dict["count"] = line_count
         file_details_dict["filename"] = file
         file_details_dict["size"] = meta_data["size"]
         file_details_dict["last_modified_time"] = meta_data["last_modified"]
         if source_sub_type != 'A':
-            if not validate_header(FILE_PATH + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
+            if not validate_header(temp_files_path + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
                 file_details_dict["count"] = 0
                 file_details_dict['status'] = 'E'
                 file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
@@ -554,13 +532,13 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
             sf_cursor.execute(sf_delete_old_details_query)
         if source_sub_type != 'A':
             stage_name = "STAGE_" + table_name
-            sf_create_stage_query = f" CREATE OR REPLACE  STAGE {stage_name} "
+            sf_create_stage_query = f" CREATE OR REPLACE TEMPORARY  STAGE {stage_name} "
             file_format = f"FILE_FORMAT = (TYPE = 'CSV', FIELD_DELIMITER = '{field_delimiter}', FIELD_OPTIONALLY_ENCLOSED_BY = '\"'  "
 
             sf_create_stage_query = sf_create_stage_query + file_format + header_exists + compression + ")"
             consumer_logger.info(f"Executing query: {sf_create_stage_query}")
             sf_cursor.execute(sf_create_stage_query)
-            sf_put_file_stage_query = f" PUT file://{FILE_PATH}/{file} @{stage_name} "
+            sf_put_file_stage_query = f" PUT file://{temp_files_path}/{file} @{stage_name} "
             consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
             sf_cursor.execute(sf_put_file_stage_query)
             field_delimiter = input_data_dict['delimiter']
