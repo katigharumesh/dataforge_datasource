@@ -35,10 +35,10 @@ import gzip
 import boto3
 
 
-#SCRIPT_PATH = r"D:\tmp\data_forge"
-#LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
-LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
+SCRIPT_PATH = r"D:\tmp\data_forge"
+LOG_PATH = r"D:\tmp\data_forge\app_logs"
+#SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource"
+#LOG_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/app_logs"
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -90,7 +90,11 @@ INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,ru
 DELETE_FILE_DETAILS = f'delete from {FILE_DETAILS_TABLE} where dataSourceScheduleId=%s and ' \
                       f'runNumber=%s '
 
-ERROR_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='E' where dataSourceScheduleId=%s and runNumber=%s "
+INSERT_SCHEDULE_STATUS = f'insert into {SCHEDULE_STATUS_TABLE}(dataSourceId,dataSourceScheduleId,runNumber,status,createdDate) values (%s,%s,%s,%s,%s)'
+
+UPDATE_SCHEDULE_STATUS = f"update {SCHEDULE_STATUS_TABLE} set status='%s' where dataSourceId=%s and runNumber=%s "
+
+MAKE_SCHEDULE_IN_PROGRESS = f"update {SCHEDULE_TABLE} set status = 'I' where dataSourceId=%s and runNumber=%s "
 
 SNOWFLAKE_CONFIGS = {
     "account": 'zetaglobal.us-east-1',
@@ -118,6 +122,9 @@ FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = "select filename,last_modified_time,si
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = "select max(runNumber) as runNumber from SUPPRESSION_DATASOURCE_SCHEDULE_STATUS where dataSourceId=REQUEST_ID and status='C'"
 RUN_NUMBER_QUERY = "select runNumber from SUPPRESSION_DATASOURCE_SCHEDULE where dataSourceId=REQUEST_ID"  # query to fetch run number
 FILE_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/temp_files/"  # local file path - mount to download the temp files
+
+
+
 
 
 

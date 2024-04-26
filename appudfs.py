@@ -178,7 +178,7 @@ def create_main_datasource(sources_loaded, main_datasource_details):
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
-            mysql_conn.mclose()
+            mysql_conn.close()
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
@@ -418,7 +418,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
         if isFile:
             file_details_list = []
             files_list = input_data_dict['filePath'].split(",")
-            consumer_logger.info("File List: "+files_list)
+            consumer_logger.info("File List: "+str(files_list))
             if len(files_list) >= 1 :
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
@@ -587,6 +587,92 @@ def process_single_file(run_number, source_obj, fully_qualified_file, consumer_l
     except Exception as e:
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
+
+def update_next_schedule_due(request_id, run_number, logger):
+    try:
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysqlcur = mysql_conn.cursor(dictionary=True)
+        requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
+                       f"date(nextscheduleDue) as nextscheduledate from {SCHEDULE_TABLE} where status='I' " \
+                       f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
+        logger.info(f"requestquery ::{requestquery}")
+        mysqlcur.execute(requestquery)
+        requestList = mysqlcur.fetchall()
+        print(requestList)
+        for request in requestList:
+            recurrenceType = request[3]
+            id = request[0]
+            startDate = request[4]
+            endDate = str(request[5])
+            if request[6] is not None:
+                try:
+                    excludeDates = request[6].split(',')
+                except:
+                    excludeDates = request[6].split()
+
+            scheduleNextquery = f"update {SCHEDULE_TABLE} set status='W',runnumber=runnumber+1 where id={id}"
+            logger.info(f"scheduleNextquery :: {scheduleNextquery}")
+            mysqlcur.execute(scheduleNextquery)
+
+            if (recurrenceType is not None and recurrenceType == 'H'):
+                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"case when date_add(now(),INTERVAL 1 HOUR) < {endDate} Then date_add(now(),INTERVAL 1 HOUR)" \
+                                    f"else {endDate} end where id={id}"
+                mysqlcur.execute(nextschedulequery)
+            if (recurrenceType is not None and recurrenceType == 'D'):
+                if excludeDates is not None:
+                    timestamp = str(datetime.now()).split(' ')[1]
+                    # print(timestamp)
+                    # print(excludeDates)
+                    nextscheduledatep = datetime.now().date() + timedelta(days=1)
+                    while str(nextscheduledatep) in excludeDates:
+                        nextscheduledatep += timedelta(days=1)
+                    # print(nextscheduledatep)
+                    nextscheduleDuep = str(nextscheduledatep) + ' ' + timestamp
+                    # print(nextscheduleDuep)
+                else:
+                    nextscheduleDuep = datetime.now() + timedelta(days=1)
+                    nextscheduledatep = datetime.now().date() + timedelta(days=1)
+                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"if(%s<%s,%s,%s) where id={id}"
+                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+
+            if (recurrenceType is not None and recurrenceType == 'W'):
+                if excludeDates is not None:
+                    timestamp = str(datetime.now()).split(' ')[1]
+                    nextscheduledate = datetime.now().date() + timedelta(days=7)
+                    while nextscheduledate in excludeDates:
+                        nextscheduledate += timedelta(days=7)
+
+                    nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
+                else:
+                    nextscheduleDuep = datetime.now() + timedelta(days=7)
+
+                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"if(%s<%s,%s,%s) where id={id}"
+                # logger.info(nextschedulequery)
+                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+
+            if (recurrenceType is not None and recurrenceType == 'M'):
+                if excludeDates is not None:
+                    timestamp = str(datetime.now()).split(' ')[1]
+                    nextscheduledate = datetime.now().date() + timedelta(months=1)
+                    while nextscheduledate in excludeDates:
+                        nextscheduledate += timedelta(months=1)
+
+                    nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
+                else:
+                    nextscheduleDuep = datetime.now() + timedelta(months=1)
+                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"if(%s<%s,%s,%s) where id={id}"
+                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+    except Exception as e:
+        logger.error(F"Error in updatenextscheduledue() :: {e}")
+        logger.error(traceback.print_exc())
+    finally:
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysqlcur.close()
+            mysql_conn.close()
 
 
 

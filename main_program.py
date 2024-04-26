@@ -60,21 +60,23 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
 
 # Main function
 def main(request_id, run_number):
+    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+    mysql_cursor = mysql_conn.cursor(dictionary=True)
+    mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
+    mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I', request_id, run_number))
     os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
     main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
     pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
     if os.path.exists(str(pid_file)):
         main_logger.info("Script execution is already in progress, hence skipping the execution.")
         send_skype_alert("Script execution is already in progress, hence skipping the execution.")
-        # update SUPPRESSION_DATASOURCE_SCHEDULE_STATUS to status='E' and update error details - by surya function
-        # update next schedule in SUPPRESSION_DATASOURCE_SCHEDULE  - by surya function
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', request_id, run_number))
+        update_next_schedule_due(request_id, run_number, main_logger)
         return
     Path(pid_file).touch()
     start_time = time.time()
     main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
     delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
-    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-    mysql_cursor = mysql_conn.cursor(dictionary=True)
     mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS.replace("REQUEST_ID", request_id).replace("RUN_NUMBER", run_number))
     main_datasource_details = mysql_cursor.fetchone()
     sources_queue = queue.Queue()
@@ -103,22 +105,22 @@ def main(request_id, run_number):
         print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
               f" Considering the datasource preparation request as failed.")
         mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
-        mysql_cursor.execute(ERROR_SCHEDULE_STATUS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
-        exit_program(-1,pid_file)
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', request_id, run_number))
+        update_next_schedule_due(request_id, run_number, main_logger)
+        os.remove(pid_file)
+        return
     main_logger.info("All sources are successfully processed.")
     print("All sources are successfully processed.")
     # Preparing request level main_datasource
     create_main_datasource(sources_loaded, main_datasource_details)
     end_time = time.time()
     main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
-    exit_program(0,pid_file)
-
-
+    os.remove(pid_file)
 
 if __name__ == "__main__":
     try:
-        request_id = "46"
-        run_number = "1"
+        request_id = "42"
+        run_number = "7"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])
@@ -127,4 +129,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}")
         exit_program(-1)
+
+
+
 
