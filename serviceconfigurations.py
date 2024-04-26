@@ -35,10 +35,10 @@ import gzip
 import boto3
 
 
-SCRIPT_PATH = r"D:\tmp\data_forge"
-LOG_PATH = r"D:\tmp\data_forge\app_logs"
-#SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
-#LOG_PATH = SCRIPT_PATH + "app_logs"
+#SCRIPT_PATH = r"D:\tmp\data_forge"
+#LOG_PATH = r"D:\tmp\data_forge\app_logs"
+SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
+LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
@@ -58,7 +58,7 @@ skype_configurations = {
 }
 
 # GLOBAL_VARIABLES
-
+'''
 MYSQL_CONFIGS = {
     "host": "10.218.18.157",
     "user": "smartuser",
@@ -67,7 +67,7 @@ MYSQL_CONFIGS = {
     "autocommit": True,
     "allow_local_infile": True
 }
-"""
+'''
 MYSQL_CONFIGS = {
     'user': 'pmtauser',
     'password': 'pmta12#$',
@@ -76,7 +76,7 @@ MYSQL_CONFIGS = {
     'autocommit': True,
     'allow_local_infile': True
 }
-"""
+
 SCHEDULE_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE'
 SCHEDULE_STATUS_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE_STATUS'
 DATASOURCE_TABLE = 'SUPPRESSION_DATASOURCE'
@@ -130,10 +130,6 @@ SUBJECT = "PROXY TESTING REPORT"
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
-
-
-
-
 
 
 

@@ -1,5 +1,3 @@
-import os
-import time
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -47,7 +45,7 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
                     while sources_queue.empty():  # Wait for tasks to be available in the queue
                         queue_empty_condition.wait()
                     source = sources_queue.get()  # Get task from the queue
-                    main_logger.info(f"Processing source : str(source)")
+                    main_logger.info(f"Processing source : {str(source)}")
                 if source is None:  # Sentinel value indicating end of tasks
                     main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                     break
@@ -138,8 +136,8 @@ def main(request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        request_id = "7"
-        run_number = "2"
+        request_id = "2"
+        run_number = "0"
         if len(sys.argv) > 1:
             request_id = str(sys.argv[1])
             run_number = str(sys.argv[2])
@@ -148,7 +146,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
-
-
 
 

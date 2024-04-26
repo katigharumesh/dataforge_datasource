@@ -1,4 +1,3 @@
-import os
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -37,7 +36,8 @@ def load_data_source(source, main_datasource_details):
 
         source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
         if source_type == "F":
-            temp_files_path = os.makedirs(f"{FILE_PATH}/{str(data_source_id)}/{str(run_number)}/{str(data_source_mapping_id)}")
+            temp_files_path = f"{FILE_PATH}/{str(data_source_id)}/{str(run_number)}/{str(data_source_mapping_id)}/"
+            os.makedirs(temp_files_path,exist_ok=True)
             source_table = process_file_type_request(data_source_id, source_table, run_number,
                                                             data_source_schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, data_source_mapping_id, temp_files_path, hostname,
@@ -408,7 +408,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
             if len(files_list) >= 1 :
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
-                    file_details_dict = process_single_file(temp_files_path , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
+                    file_details_dict = process_single_file(temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
                     fileName = file_details_dict["filename"]
                     count = file_details_dict["count"]
