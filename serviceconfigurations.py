@@ -34,14 +34,17 @@ import fileinput
 import gzip
 import boto3
 
+''' DATA SOURCE CONFIGS '''
 
 #SCRIPT_PATH = r"D:\tmp\data_forge"
 #LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAFORGE/DATASOURCE"
+SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
 LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
+
+
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
 
@@ -92,7 +95,7 @@ FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.nam
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        f'{DATASOURCE_MAPPING_TABLE} a join ' \
-                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s '
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s %s '
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
                       f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
@@ -131,3 +134,32 @@ SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
 
+
+
+
+
+'''' SUPPRESSION REQUEST CONFIGS '''
+
+#SUPP_SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
+SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
+SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
+SUPP_FILE_PATH = SUPP_SCRIPT_PATH + "supp_r_logs"  # local file path - mount to download the temp files
+SUPP_PID_FILE = SUPP_SCRIPT_PATH + "/supp_REQUEST_ID.pid"
+
+SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
+SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"
+SUPP_MAPPING_TABLE = "SUPPRESSION_REQUEST_MAPPING"
+SUPP_SCHEDULE_STATUS_TABLE = "SUPPRESSION_REQUEST_SCHEDULE_STATUS"
+UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
+UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
+
+
+# FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
+#                                 f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
+#                                 f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
+
+FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
+                       'b.sfAccount,b.sfDatabase,' \
+                       'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
+                       f'{SUPP_MAPPING_TABLE} a join ' \
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s '
