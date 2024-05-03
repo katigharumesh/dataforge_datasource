@@ -37,7 +37,7 @@ import boto3
 
 #SCRIPT_PATH = r"D:\tmp\data_forge"
 #LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
+SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAFORGE/DATASOURCE"
 LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
@@ -92,7 +92,7 @@ FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.nam
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        f'{DATASOURCE_MAPPING_TABLE} a join ' \
-                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s %s '
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s '
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
                       f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
@@ -130,7 +130,4 @@ SUBJECT = "PROXY TESTING REPORT"
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
-
-
-
 

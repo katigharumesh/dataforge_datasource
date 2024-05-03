@@ -16,8 +16,8 @@ def load_data_sources_producer(sources_queue, request_id, queue_empty_condition,
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
     mysql_cursor = mysql_conn.cursor(dictionary=True)
     main_logger.info(f"Fetch data sources for the request id: {request_id}")
-    main_logger.info(f"Executing query: {FETCH_SOURCE_DETAILS,(request_id,'')}")
-    mysql_cursor.execute(FETCH_SOURCE_DETAILS,(request_id,''))
+    main_logger.info(f"Executing query: {FETCH_SOURCE_DETAILS,(request_id,' ')}")
+    mysql_cursor.execute(FETCH_SOURCE_DETAILS,(request_id,))
     data_sources = mysql_cursor.fetchall()
     data_sources_count= len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
@@ -147,5 +147,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
-
 

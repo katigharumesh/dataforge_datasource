@@ -655,5 +655,3 @@ def update_next_schedule_due(request_id, run_number, logger):
             mysqlcur.close()
             mysql_conn.close()
 
-
-
