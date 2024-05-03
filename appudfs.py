@@ -2,9 +2,13 @@
 from serviceconfigurations import *
 from basicudfs import *
 
-def load_data_source(source, main_datasource_details):
+def load_data_source(type_of_request, source, main_request_details):
     try:
-        data_source_mapping_id = source['id']
+        if type_of_request == "SUPPRESSION_REQUEST":
+            request_id = source['requestId']
+        elif type_of_request == "SUPPRESSION_DATASOURCE":
+            request_id = source['dataSourceId']
+        mapping_id = source['id']
         data_source_id = source['dataSourceId']
         source_id = source['sourceId']
         input_data = source['inputData']
@@ -20,10 +24,10 @@ def load_data_source(source, main_datasource_details):
         sf_query = source['sfQuery']
         source_type = source['sourceType']
         source_sub_type = source['sourceSubType']
-        data_source_schedule_id = main_datasource_details['dataSourceScheduleId']
-        run_number = main_datasource_details['runNumber']
+        schedule_id = main_request_details['ScheduleId']
+        run_number = main_request_details['runNumber']
         input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
-        consumer_logger = create_logger(base_logger_name=f"source_{str(data_source_mapping_id)}_{str(data_source_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(data_source_id)}/{str(run_number)}/", log_to_stdout=True)
+        consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
         consumer_logger.info(f"Processing task: {str(source)}")
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -34,13 +38,13 @@ def load_data_source(source, main_datasource_details):
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection established Successfully....")
 
-        source_table = SOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(data_source_mapping_id) + '_' + str(run_number)
+        source_table = SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(mapping_id) + '_' + str(run_number)
         if source_type == "F":
-            temp_files_path = f"{FILE_PATH}/{str(data_source_id)}/{str(run_number)}/{str(data_source_mapping_id)}/"
+            temp_files_path = f"{FILE_PATH}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
             os.makedirs(temp_files_path,exist_ok=True)
-            source_table = process_file_type_request(data_source_id, source_table, run_number,
-                                                            data_source_schedule_id, source_sub_type, input_data_dict,
-                                                            mysql_cursor, consumer_logger, data_source_mapping_id, temp_files_path, hostname,
+            source_table = process_file_type_request(request_id, source_table, run_number,
+                                                            schedule_id, source_sub_type, input_data_dict,
+                                                            mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             int(port), username, password)
             return source_table
 
@@ -74,7 +78,7 @@ def load_data_source(source, main_datasource_details):
                     if 'touchCount' in filter:
                         touch_filter = True
                         touch_count = filter['touchCount']
-                        if main_datasource_details['feedType'] == 'FirstParty':
+                        if main_request_details['feedType'] == 'FirstParty':
                             grouping_fields = 'listid,email'
                             join_fields = 'a.listid=b.listid and a.email=b.email'
                         else:
@@ -84,7 +88,7 @@ def load_data_source(source, main_datasource_details):
                         f" {filter['fieldName']} {OPERATOR_MAPPING[filter['searchType']]} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
-                                                 f"as select {main_datasource_details['FilterMatchFields']} " \
+                                                 f"as select {main_request_details['FilterMatchFields']} " \
                                                  f"from {sf_data_source} where {' and '.join(where_conditions)} "
                 print("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
@@ -97,9 +101,9 @@ def load_data_source(source, main_datasource_details):
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
-                #mysql_cursor.execute(DELETE_FILE_DETAILS, (data_source_schedule_id, run_number, data_source_mapping_id))
+                #mysql_cursor.execute(DELETE_FILE_DETAILS, (schedule_id, run_number, mapping_id))
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
-                    data_source_schedule_id, run_number, data_source_mapping_id, records_count, sf_source_name,
+                    schedule_id, run_number, mapping_id, records_count, sf_source_name,
                     'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA','C',''))
                 return source_table
             else:
@@ -121,17 +125,17 @@ def load_data_source(source, main_datasource_details):
             sf_conn.close()
 
 
-def create_main_datasource(sources_loaded, main_datasource_details):
+def create_main_datasource(sources_loaded, main_request_details):
     try:
-        data_source_id = main_datasource_details['id']
-        channel_name = main_datasource_details['channelName']
-        user_group_id = main_datasource_details['userGroupId']
-        feed_type = main_datasource_details['feedType']
-        data_processing_type = main_datasource_details['dataProcessingType']
-        filter_match_fields = main_datasource_details['FilterMatchFields']
-        isps = main_datasource_details['isps']
-        data_source_schedule_id = main_datasource_details['dataSourceScheduleId']
-        run_number = main_datasource_details['runNumber']
+        data_source_id = main_request_details['id']
+        channel_name = main_request_details['channelName']
+        user_group_id = main_request_details['userGroupId']
+        feed_type = main_request_details['feedType']
+        data_processing_type = main_request_details['dataProcessingType']
+        filter_match_fields = main_request_details['FilterMatchFields']
+        isps = main_request_details['isps']
+        schedule_id = main_request_details['ScheduleId']
+        run_number = main_request_details['runNumber']
 
         if data_processing_type == 'K':
             sf_data_source = f' intersect select {filter_match_fields} from '.join(sources_loaded)
@@ -345,8 +349,8 @@ class ProcessS3Files:
             print(f"Error occurred during header validation for {file} file. Error: {e}")
 
 
-def process_file_type_request(data_source_id, source_table, run_number, data_source_schedule_id, source_sub_type, input_data_dict, mysql_cursor,
-                                 consumer_logger, request_id, temp_files_path, hostname = None, port = None, username = None, password = None):
+def process_file_type_request(data_source_id, source_table, run_number, schedule_id, source_sub_type, input_data_dict, mysql_cursor,
+                                 consumer_logger, mapping_id, temp_files_path, hostname = None, port = None, username = None, password = None):
     try:
         if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -369,8 +373,8 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
 
         result = {}
         #consumer_logger.info(f"Fetching runNumber from table... ")
-        #consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id))}")
-        #mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(request_id)))
+        #consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id))}")
+        #mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id)))
 
         last_successful_run_number = 0
         # mysql_cursor.execute(last_successful_run_number_query)
@@ -379,7 +383,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
         if run_number != 0:
             mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id)))
             last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(request_id), str(last_successful_run_number)))
+            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
             last_iteration_files_details = mysql_cursor.fetchall()
             consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
             # [filename,size,modified_time,count]
@@ -416,7 +420,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                     last_modified_time = file_details_dict["last_modified_time"]
                     file_status = file_details_dict['status']
                     error_desc = file_details_dict['error_msg']
-                    mysql_cursor.execute(INSERT_FILE_DETAILS, (data_source_schedule_id, run_number, request_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time, file_status , error_desc))
+                    mysql_cursor.execute(INSERT_FILE_DETAILS, (schedule_id, run_number, mapping_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
@@ -449,7 +453,7 @@ def process_file_type_request(data_source_id, source_table, run_number, data_sou
                 file_status = file_details_dict['status']
                 error_desc = file_details_dict['error_msg']
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
-                    data_source_schedule_id, run_number, request_id, count, fileName,
+                    schedule_id, run_number, mapping_id, count, fileName,
                     'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
 
@@ -657,5 +661,16 @@ def update_next_schedule_due(request_id, run_number, logger):
 
 
 
-
-
+def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
+    logger.info("Selected DATA SOURCE  as source for input/match")
+    if type_of_request == "I":
+        logger.info("Selected as input source")
+    elif type_of_request == "M":
+        logger.info("Selected for Match")
+    # fetch latest runNUmber
+    logger.info(f" executing query: {SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
+    mysql_cursor.execute(SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,))
+    result = mysql_cursor.fetchone()
+    max_runNumber= result['runNumber']
+    status = result['status'] 
+    

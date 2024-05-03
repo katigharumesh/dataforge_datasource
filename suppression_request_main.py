@@ -16,8 +16,8 @@ def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_cond
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
     mysql_cursor = mysql_conn.cursor(dictionary=True)
     main_logger.info(f"Fetch input sources for the request id: {supp_request_id}")
-    main_logger.info(f"Executing query: {FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,'')}")
-    mysql_cursor.execute(FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,''))
+    main_logger.info(f"Executing query: {FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,)}")
+    mysql_cursor.execute(FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,))
     data_sources = mysql_cursor.fetchall()
     data_sources_count = len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
@@ -34,7 +34,7 @@ def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_cond
 
 
 # Consumer thread function
-def load_data_sources_consumer(sources_queue, main_datasource_details, queue_empty_condition,
+def load_data_sources_consumer(sources_queue, main_request_details, queue_empty_condition,
                                main_logger):
     try:
         global consumer_kill_condition
@@ -50,7 +50,7 @@ def load_data_sources_consumer(sources_queue, main_datasource_details, queue_emp
                     main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                     break
                 main_logger.info("Calling function ... load_data_source")
-                sources_loaded.append(load_data_source(source, main_datasource_details))
+                sources_loaded.append(load_data_source("SUPPRESSION_REQUEST" ,source, main_request_details))
                 sources_queue.task_done()  # Notify the queue that the task is done
             else:
                 break
@@ -85,9 +85,9 @@ def main(supp_request_id, run_number):
         start_time = time.time()
         main_logger.info("Script Execution Started " + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
         delete_old_files(SUPP_LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
-        #main_logger.info(f"Fetch suppression request details, executing : {FETCH_MAIN_DATASOURCE_DETAILS,(supp_request_id, run_number)}")
-        #mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS,(supp_request_id, run_number))
-        #main_datasource_details = mysql_cursor.fetchone()
+        main_logger.info(f"Fetch suppression request details, executing : {FETCH_SUPP_REQUEST_DETAILS,(supp_request_id, run_number)}")
+        mysql_cursor.execute(FETCH_SUPP_REQUEST_DETAILS,(supp_request_id, run_number))
+        main_request_details = mysql_cursor.fetchone()
         sources_queue = queue.Queue()
         queue_empty_condition = threading.Condition()
         # Preparing individuals tables for given data sources
@@ -98,7 +98,7 @@ def main(supp_request_id, run_number):
         for i in range(THREAD_COUNT):
             #consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
             consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
-                sources_queue, main_datasource_details, queue_empty_condition, main_logger))
+                sources_queue, main_request_details, queue_empty_condition, main_logger))
             consumer_thread.start()
             time.sleep(10)
             consumer_threads.append(consumer_thread)
@@ -115,7 +115,7 @@ def main(supp_request_id, run_number):
                              f"sources. Considering the datasource preparation request as failed.")
             print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
                   f" Considering the datasource preparation request as failed.")
-            mysql_cursor.execute(DELETE_FILE_DETAILS, (main_datasource_details['dataSourceScheduleId'], main_datasource_details['runNumber']))
+            mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources.', supp_request_id, run_number))
             update_next_schedule_due(supp_request_id, run_number, main_logger)
             os.remove(pid_file)
@@ -123,7 +123,7 @@ def main(supp_request_id, run_number):
         main_logger.info("All sources are successfully processed.")
         print("All sources are successfully processed.")
         # Preparing request level main_datasource
-        create_main_datasource(sources_loaded, main_datasource_details)
+        create_main_datasource(sources_loaded, main_request_details)
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")

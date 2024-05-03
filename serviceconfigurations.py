@@ -88,14 +88,14 @@ SOURCE_TYPES_TABLE = 'SUPPRESSION_SOURCE_TYPES'
 FILE_DETAILS_TABLE = 'SUPPRESSION_DATASOURCE_FILE_DETAILS'
 
 FETCH_MAIN_DATASOURCE_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
-                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId,b.runNumber from {DATASOURCE_TABLE} a ' \
+                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId as ScheduleId,b.runNumber from {DATASOURCE_TABLE} a ' \
                                 f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
 
 FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        f'{DATASOURCE_MAPPING_TABLE} a join ' \
-                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s %s '
+                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s'
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
                       f' values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
@@ -154,13 +154,16 @@ UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requ
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
 
-# FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
-#                                 f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
-#                                 f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
+FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
+                                 f'a.FilterMatchFields,a.isps,b.requestScheduleId as ScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
+                                 f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
-FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
+FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
-                       f'{SUPP_MAPPING_TABLE} a join ' \
+                       f'{SUPP_MAPPING_TABLE} a left join ' \
                        f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s '
 
+
+
+SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
