@@ -163,3 +163,4 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.inputData,b.
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
                        f'{SUPP_MAPPING_TABLE} a join ' \
                        f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s '
+
