@@ -2,7 +2,7 @@
 from serviceconfigurations import *
 from basicudfs import *
 
-def load_data_source(type_of_request, source, main_request_details):
+def load_input_source(type_of_request, source, main_request_details):
     try:
         if type_of_request == "SUPPRESSION_REQUEST":
             request_id = source['requestId']

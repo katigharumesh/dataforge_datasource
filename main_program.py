@@ -49,8 +49,8 @@ def load_data_sources_consumer(sources_queue, main_request_details, queue_empty_
                 if source is None:  # Sentinel value indicating end of tasks
                     main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                     break
-                main_logger.info("Calling function ... load_data_source")
-                sources_loaded.append(load_data_source("SUPPRESSION_DATASOURCE", source, main_request_details))
+                main_logger.info("Calling function ... load_input_source")
+                sources_loaded.append(load_input_source("SUPPRESSION_DATASOURCE", source, main_request_details))
                 sources_queue.task_done()  # Notify the queue that the task is done
             else:
                 break
