@@ -34,7 +34,7 @@ def load_data_source(type_of_request, source, main_request_details):
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
         if source_id == "0" and data_source_id != "" :
-            data_source_input("I", data_source_id, mysql_cursor, consumer_logger)
+            return data_source_input("I", data_source_id, mysql_cursor, consumer_logger)
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
