@@ -33,6 +33,8 @@ def load_data_source(type_of_request, source, main_request_details):
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
+        if source_id == "0" and data_source_id != "" :
+            data_source_input("I", data_source_id, mysql_cursor, consumer_logger)
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -662,15 +664,26 @@ def update_next_schedule_due(request_id, run_number, logger):
 
 
 def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
-    logger.info("Selected DATA SOURCE  as source for input/match")
-    if type_of_request == "I":
-        logger.info("Selected as input source")
-    elif type_of_request == "M":
-        logger.info("Selected for Match")
-    # fetch latest runNUmber
-    logger.info(f" executing query: {SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
-    mysql_cursor.execute(SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,))
-    result = mysql_cursor.fetchone()
-    max_runNumber= result['runNumber']
-    status = result['status'] 
+    try:
+        logger.info("Selected DATA SOURCE  as source for input/match")
+        if type_of_request == "I":
+            logger.info("Selected as input source")
+        if type_of_request == "M":
+            logger.info("Selected for Match")
+        # fetch latest runNUmber
+        logger.info(f" executing query: {SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
+        mysql_cursor.execute(SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,))
+        result = mysql_cursor.fetchone()
+        max_runNumber = result['runNumber']
+        status = result['status']
+        if status == "C":
+            table_name = f"{MAIN_DATASOURCE_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
+            return table_name
+        else:
+            raise Exception("Given dataSource is not actively working. So making this request error.")
+
+    except Exception as e:
+        logger.error("Exception occurred. Please look into this .... {str(e)}")
+        raise Exception(str(e))
+
     
