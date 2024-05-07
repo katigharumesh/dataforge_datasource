@@ -5,12 +5,12 @@ from appudfs import *
 
 global sources_loaded
 sources_loaded = []
-data_sources_count=0
+input_sources_count=0
 consumer_kill_condition = False
 
 def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
     # mysql connection closing
-    global data_sources_count
+    global input_sources_count
     main_logger.info(f"Producer execution started: {time.ctime()} ")
     main_logger.info(f"Acquiring mysql connection...")
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -19,7 +19,7 @@ def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_cond
     main_logger.info(f"Executing query: {FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,)}")
     mysql_cursor.execute(FETCH_SUPP_SOURCE_DETAILS,(supp_request_id,))
     data_sources = mysql_cursor.fetchall()
-    data_sources_count = len(data_sources)
+    input_sources_count = len(data_sources)
     main_logger.info(f"Here are the fetched Data Sources: {data_sources}")
     for source in data_sources:
         sources_queue.put(source)
@@ -34,7 +34,7 @@ def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_cond
 
 
 # Consumer thread function
-def load_data_sources_consumer(sources_queue, main_request_details, queue_empty_condition,
+def load_input_sources_consumer(sources_queue, main_request_details, queue_empty_condition,
                                main_logger):
     try:
         global consumer_kill_condition
@@ -97,7 +97,7 @@ def main(supp_request_id, run_number):
         consumer_threads = []
         for i in range(THREAD_COUNT):
             #consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
-            consumer_thread = threading.Thread(target=load_data_sources_consumer, args=(
+            consumer_thread = threading.Thread(target=load_input_sources_consumer, args=(
                 sources_queue, main_request_details, queue_empty_condition, main_logger))
             consumer_thread.start()
             time.sleep(10)
@@ -110,19 +110,20 @@ def main(supp_request_id, run_number):
             consumer_thread.join()
         # add the logic to add the data source tables to sources_loaded.
         print("sources loaded: " + str(sources_loaded))
-        if len(sources_loaded) != data_sources_count:
-            main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} "
-                             f"sources. Considering the datasource preparation request as failed.")
-            print(f"Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources."
-                  f" Considering the datasource preparation request as failed.")
+        if len(sources_loaded) != input_sources_count:
+            main_logger.info(f"Only {len(sources_loaded)} sources are successfully processed out of {input_sources_count} "
+                             f"sources. Considering the suppression request as failed.")
+            print(f"Only {len(sources_loaded)} sources are successfully processed out of {input_sources_count} sources."
+                  f" Considering the suppression request as failed.")
             mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
-            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {data_sources_count} sources.', supp_request_id, run_number))
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {input_sources_count} sources.', supp_request_id, run_number))
             update_next_schedule_due(supp_request_id, run_number, main_logger)
             os.remove(pid_file)
             return
         main_logger.info("All sources are successfully processed.")
         print("All sources are successfully processed.")
         # Preparing request level main_datasource
+        ordered_source_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
         create_main_datasource(sources_loaded, main_request_details)
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()

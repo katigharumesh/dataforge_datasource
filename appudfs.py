@@ -34,7 +34,7 @@ def load_input_source(type_of_request, source, main_request_details):
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
         if source_id == "0" and data_source_id != "" :
-            return data_source_input("I", data_source_id, mysql_cursor, consumer_logger)
+            return tuple(data_source_input("I", data_source_id, mysql_cursor, consumer_logger),mapping_id)
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -48,7 +48,7 @@ def load_input_source(type_of_request, source, main_request_details):
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             int(port), username, password)
-            return source_table
+            return tuple(source_table,mapping_id)
 
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
@@ -100,6 +100,8 @@ def load_input_source(type_of_request, source, main_request_details):
                         f"using (select {grouping_fields} from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
                         f" group by {grouping_fields} having count(1)< {touch_count}) b "
                         f"where {join_fields}")
+                sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
+                                  f" add column filename varchar as '{sf_source_name}'")
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
@@ -107,7 +109,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
                     'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA','C',''))
-                return source_table
+                return tuple(source_table,mapping_id)
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
                 raise Exception("Unknown source_sub_type selected")
@@ -130,6 +132,7 @@ def load_input_source(type_of_request, source, main_request_details):
 def create_main_datasource(sources_loaded, main_request_details):
     try:
         data_source_id = main_request_details['id']
+        data_source_name = main_request_details['name']
         channel_name = main_request_details['channelName']
         user_group_id = main_request_details['userGroupId']
         feed_type = main_request_details['feedType']
@@ -157,6 +160,7 @@ def create_main_datasource(sources_loaded, main_request_details):
             sf_cursor.execute(f"update {temp_datasource_table} set email=lower(trim(email))")
             if 'md5hash' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_datasource_table} add column md5hash varchar as md5(email)")
+        sf_cursor.execute(f"alter table {temp_datasource_table} add column filename varchar as '{data_source_name}'")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
@@ -685,5 +689,44 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
     except Exception as e:
         logger.error("Exception occurred. Please look into this .... {str(e)}")
         raise Exception(str(e))
+
+def create_main_input_source(sources_loaded, main_request_details):
+    try:
+        request_id = main_request_details['id']
+        channel_name = main_request_details['channelName']
+        feed_type = main_request_details['feedType']
+        remove_duplicates = main_request_details['removeDuplicates']
+        filter_match_fields = main_request_details['FilterMatchFields']
+        schedule_id = main_request_details['ScheduleId']
+        run_number = main_request_details['runNumber']
+
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        main_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number)
+        temp_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number) + "_TEMP"
+        main_input_source_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table} as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(sources_loaded)}"
+        print(f"Main input source preparation query: {main_input_source_query}")
+        sf_cursor.execute(main_input_source_query)
+        if 'email' in str(filter_match_fields).lower().split(','):
+            sf_cursor.execute(f"update {temp_input_source_table} set email=lower(trim(email))")
+            if 'md5hash' not in str(filter_match_fields).lower().split(','):
+                sf_cursor.execute(f"alter table {temp_input_source_table} add column md5hash varchar as md5(email)")
+        sf_cursor.execute(f"drop table if exists {main_input_source_table}")
+        sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
+        sf_cursor.execute(f"select count(1) from {main_input_source_table}")
+        record_count = sf_cursor.fetchone()[0]
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('C', record_count, '', data_source_id, run_number))
+    except Exception as e:
+        print(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while creating main input source table. {str(e)} ")
+    finally:
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysql_cursor.close()
+            mysql_conn.close()
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
     

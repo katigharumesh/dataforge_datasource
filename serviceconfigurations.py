@@ -146,6 +146,8 @@ SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
 SUPP_FILE_PATH = SUPP_SCRIPT_PATH + "supp_r_logs"  # local file path - mount to download the temp files
 SUPP_PID_FILE = SUPP_SCRIPT_PATH + "/supp_REQUEST_ID.pid"
 
+MAIN_INPUT_SOURCE_TABLE_PREFIX = "SUPPRESSION_REQUEST_MAIN_INPUT_"
+
 SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
 SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"
 SUPP_MAPPING_TABLE = "SUPPRESSION_REQUEST_MAPPING"
@@ -154,8 +156,8 @@ UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requ
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
 
-FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
-                                 f'a.FilterMatchFields,a.isps,b.requestScheduleId as ScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
+FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
+                                 f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
                                  f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
