@@ -701,7 +701,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         channel_name = main_request_details['channelName']
         feed_type = main_request_details['feedType']
         remove_duplicates = main_request_details['removeDuplicates']
-        filter_match_fields = main_request_details['FilterMatchFields']
+        filter_match_fields = main_request_details['FilterMatchFields'] + ',filename'
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
 
@@ -712,17 +712,61 @@ def create_main_input_source(sources_loaded, main_request_details):
         main_input_source_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table} as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(sources_loaded)}"
         print(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
-        if 'email' in str(filter_match_fields).lower().split(','):
+        if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_input_source_table} set email=lower(trim(email))")
             if 'md5hash' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_input_source_table} add column md5hash varchar as md5(email)")
         sf_cursor.execute(f"drop table if exists {main_input_source_table}")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
-        record_count = sf_cursor.fetchone()[0]
+        counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('C', record_count, '', data_source_id, run_number))
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA'
+                                                                      ,'INITIAL COUNT',0,counts_after_filter,0,0))
+        counts_before_filter = counts_after_filter
+        if feed_type != 'A':
+            if feed_type == 'F':
+                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where listid not in (select listid from {FP_LISTIDS_SF_TABLE})")
+                filter_name = 'Third Party listids suppression'
+            elif feed_type == 'T':
+                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where listid in (select listid from {FP_LISTIDS_SF_TABLE})")
+                filter_name = 'First Party listids suppression'
+            else:
+                raise Exception("Unknown feed_type has been configured. Please look into this...")
+            counts_after_filter = counts_before_filter - supp_count
+            mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                 (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
+                                  , filter_name, counts_before_filter, counts_after_filter, 0, 0))
+            counts_before_filter = counts_after_filter
+
+        sf_cursor.execute(f"create or replace transient table {temp_input_source_table} like {main_input_source_table}")
+        if remove_duplicates == 0:
+#Pending Green all feed type
+            if feed_type == 'F':
+                join_fields = 'a.email=b.email and a.listid=b.listid and a.filename=b.filename'
+            if feed_type == 'T':
+                join_fields = 'a.email=b.email and a.filename=b.filename'
+            filter_name = 'File level duplicates suppression'
+        else:
+            if feed_type == 'F':
+                join_fields = 'a.email=b.email and a.listid=b.listid'
+            if feed_type == 'T':
+                join_fields = 'a.email=b.email'
+            filter_name = 'Across files duplicates suppression'
+        for source in sources_loaded:
+            sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
+                              f" where filename = '{source}') b on {join_fields} when not matched then insert ")
+        sf_cursor.execute(f"drop table {main_input_source_table}")
+        sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
+        sf_cursor.execute(f"select count(1) from {main_input_source_table}")
+        counts_after_filter = sf_cursor.fetchone()[0]
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                             (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
+                              , filter_name, counts_before_filter, counts_after_filter, 0, 0))
+        counts_before_filter = counts_after_filter
+
+
     except Exception as e:
         print(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main input source table. {str(e)} ")

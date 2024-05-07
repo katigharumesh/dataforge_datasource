@@ -152,6 +152,10 @@ SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
 SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"
 SUPP_MAPPING_TABLE = "SUPPRESSION_REQUEST_MAPPING"
 SUPP_SCHEDULE_STATUS_TABLE = "SUPPRESSION_REQUEST_SCHEDULE_STATUS"
+SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_DETAILED_STATS"
+
+FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
+
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
@@ -169,3 +173,8 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId
 
 
 SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
+
+INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} " \
+                                          f"(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId" \
+                                          f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount" \
+                                          f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
