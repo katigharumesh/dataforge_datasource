@@ -122,9 +122,9 @@ STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
 SOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_MAPPING_'
 MAIN_DATASOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_'
 
-OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<',
-                    'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
-                    'not exists in': 'not in', 'predefined daterange': '>='}
+#OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<'
+# , 'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
+#                    'not exists in': 'not in', 'predefined daterange': '>='}
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]

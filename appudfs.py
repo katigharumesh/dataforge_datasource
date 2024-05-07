@@ -63,17 +63,17 @@ def load_input_source(type_of_request, source, main_request_details):
                 for filter in input_data_dict:
                     if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
                         filter['value'] = f"%{filter['value']}%"
-                    if filter['dataType'] != 'number' and filter['searchType'] != 'predefined daterange':
+                    if filter['dataType'] != 'number' and filter['searchType'] != '>=':
                         filter['value'] = "'" + filter['value'] + "'"
-                    if filter['searchType'] in ('exists in', 'not exists in') and filter['dataType'] == 'number':
+                    if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
                         filter['value'] = "(" + filter['value'] + ")"
-                    elif filter['searchType'] in ('exists in', 'not exists in') and filter['dataType'] != 'number':
+                    elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
                         filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
                     if filter['searchType'] == 'between' and filter['dataType'] != 'number':
                         filter['value'] = filter['value'].replace(',', '\' and \'')
                     elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
                         filter['value'] = filter['value'].replace(',', ' and ')
-                    if filter['searchType'] == 'predefined daterange':
+                    if filter['searchType'] == '>=':
                         filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
                     touch_filter = False
@@ -87,7 +87,7 @@ def load_input_source(type_of_request, source, main_request_details):
                             grouping_fields = 'email'
                             join_fields = 'a.email=b.email'
                     where_conditions.append(
-                        f" {filter['fieldName']} {OPERATOR_MAPPING[filter['searchType']]} {filter['value']} ")
+                        f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
                                                  f"as select {main_request_details['FilterMatchFields']} " \
@@ -579,7 +579,7 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
         consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
         raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
 
-def update_next_schedule_due(request_id, run_number, logger):
+def update_next_schedule_due(request_id, run_number, logger, request_status='E'):
     try:
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor(dictionary=True)
@@ -657,6 +657,11 @@ def update_next_schedule_due(request_id, run_number, logger):
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
                                     f"if(%s<%s,%s,%s) where id={id}"
                 mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+
+            if recurrenceType is None and request_status == 'C':
+                update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
+                mysqlcur.execute(update_schedule_status)
+
     except Exception as e:
         logger.error(F"Error in updatenextscheduledue() :: {e}")
         logger.error(traceback.print_exc())
