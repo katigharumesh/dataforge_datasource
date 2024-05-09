@@ -153,6 +153,8 @@ SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"
 SUPP_MAPPING_TABLE = "SUPPRESSION_REQUEST_MAPPING"
 SUPP_SCHEDULE_STATUS_TABLE = "SUPPRESSION_REQUEST_SCHEDULE_STATUS"
 SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_DETAILED_STATS"
+SUPPRESSION_REQUEST_FILTERS_TABLE = "SUPPRESSION_REQUEST_FILTERS"
+SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 
 FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 
@@ -161,7 +163,7 @@ UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%
 
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
-                                 f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber from {SUPP_REQUEST_TABLE} a ' \
+                                 f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
                                  f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
@@ -178,3 +180,9 @@ INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETA
                                           f"(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId" \
                                           f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount" \
                                           f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
+
+FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppressionMethod,offerSuppression," \
+                               f"purdueSuppression,stateSuppression,zipSuppression,filterDataSources," \
+                               f"applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
+                               f"applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
+                               f"postalFields from %s where id = %s"

@@ -81,11 +81,11 @@ def load_input_source(type_of_request, source, main_request_details):
                         touch_filter = True
                         touch_count = filter['touchCount']
                         if main_request_details['feedType'] == 'FirstParty':
-                            grouping_fields = 'listid,email'
-                            join_fields = 'a.listid=b.listid and a.email=b.email'
+                            grouping_fields = 'listid,email_id'
+                            join_fields = 'a.listid=b.listid and a.email_id=b.email_id'
                         else:
-                            grouping_fields = 'email'
-                            join_fields = 'a.email=b.email'
+                            grouping_fields = 'email_id'
+                            join_fields = 'a.email_id=b.email_id'
                     where_conditions.append(
                         f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
@@ -156,10 +156,12 @@ def create_main_datasource(sources_loaded, main_request_details):
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select {filter_match_fields} from {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
-        if 'email' in str(filter_match_fields).lower().split(','):
-            sf_cursor.execute(f"update {temp_datasource_table} set email=lower(trim(email))")
-            if 'md5hash' not in str(filter_match_fields).lower().split(','):
-                sf_cursor.execute(f"alter table {temp_datasource_table} add column md5hash varchar as md5(email)")
+        if 'email_id' in str(filter_match_fields).lower().split(','):
+            sf_cursor.execute(f"update {temp_datasource_table} set email_id=lower(trim(email_id))")
+            isps_filter = str(isps).replace(",","','")
+            sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
+            if 'email_md5' not in str(filter_match_fields).lower().split(','):
+                sf_cursor.execute(f"alter table {temp_datasource_table} add column email_md5 varchar as md5(email_id)")
         sf_cursor.execute(f"alter table {temp_datasource_table} add column filename varchar as '{data_source_name}'")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
@@ -582,7 +584,8 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
 def update_next_schedule_due(request_id, run_number, logger, request_status='E'):
     try:
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysqlcur = mysql_conn.cursor(dictionary=True)
+        mysqlcur = mysql_conn.cursor()
+        mysqlcur.execute("set time_zone='UTC';")
         requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
                        f"date(nextscheduleDue) as nextscheduledate from {SCHEDULE_TABLE} where status='I' " \
                        f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
@@ -713,9 +716,9 @@ def create_main_input_source(sources_loaded, main_request_details):
         print(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
-            sf_cursor.execute(f"update {temp_input_source_table} set email=lower(trim(email))")
-            if 'md5hash' not in str(filter_match_fields).lower().split(','):
-                sf_cursor.execute(f"alter table {temp_input_source_table} add column md5hash varchar as md5(email)")
+            sf_cursor.execute(f"update {temp_input_source_table} set email_id=lower(trim(email_id))")
+            if 'email_md5' not in str(filter_match_fields).lower().split(','):
+                sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar as md5(email_id)")
         sf_cursor.execute(f"drop table if exists {main_input_source_table}")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
@@ -744,15 +747,15 @@ def create_main_input_source(sources_loaded, main_request_details):
         if remove_duplicates == 0:
 #Pending Green all feed type
             if feed_type == 'F':
-                join_fields = 'a.email=b.email and a.listid=b.listid and a.filename=b.filename'
+                join_fields = 'a.email_id=b.email_id and a.listid=b.listid and a.filename=b.filename'
             if feed_type == 'T':
-                join_fields = 'a.email=b.email and a.filename=b.filename'
+                join_fields = 'a.email_id=b.email_id and a.filename=b.filename'
             filter_name = 'File level duplicates suppression'
         else:
             if feed_type == 'F':
-                join_fields = 'a.email=b.email and a.listid=b.listid'
+                join_fields = 'a.email_id=b.email_id and a.listid=b.listid'
             if feed_type == 'T':
-                join_fields = 'a.email=b.email'
+                join_fields = 'a.email_id=b.email_id'
             filter_name = 'Across files duplicates suppression'
         for source in sources_loaded:
             sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
@@ -765,7 +768,7 @@ def create_main_input_source(sources_loaded, main_request_details):
                              (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
                               , filter_name, counts_before_filter, counts_after_filter, 0, 0))
         counts_before_filter = counts_after_filter
-
+        return counts_before_filter, counts_after_filter
 
     except Exception as e:
         print(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))

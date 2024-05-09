@@ -4,8 +4,12 @@ from basicudfs import *
 from appudfs import *
 
 global sources_loaded
+global counts_before_filter
+global counts_after_filter
+counts_before_filter = 0
+counts_after_filter = 0
 sources_loaded = []
-input_sources_count=0
+input_sources_count = 0
 consumer_kill_condition = False
 
 def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
@@ -122,9 +126,22 @@ def main(supp_request_id, run_number):
             return
         main_logger.info("All sources are successfully processed.")
         print("All sources are successfully processed.")
-        # Preparing request level main_datasource
-        ordered_source_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
-        create_main_datasource(sources_loaded, main_request_details)
+        # Preparing request level main input source
+        ordered_sources_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
+        counts_before_filter, counts_after_filter = create_main_input_source(ordered_sources_loaded, main_request_details)
+        # Fetching the configured Filters table
+        if main_request_details['isCustomFilter']:
+            filter_table = SUPPRESSION_REQUEST_FILTERS_TABLE
+        else:
+            filter_table = SUPPRESSION_PRESET_FILTERS_TABLE
+        # Fetching request filter details
+        mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS,(filter_table,main_request_details['filterId']))
+        filter_details = mysql_cursor.fetchone()
+        # Performing isps filteration
+
+
+
+
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")

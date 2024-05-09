@@ -122,8 +122,8 @@ def main(request_id, run_number):
         main_logger.info("All sources are successfully processed.")
         print("All sources are successfully processed.")
         # Preparing request level main_datasource
-        ordered_source_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
-        create_main_datasource(ordered_source_loaded, main_request_details)
+        ordered_sources_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
+        create_main_datasource(ordered_sources_loaded, main_request_details)
         update_next_schedule_due(request_id, run_number, main_logger, 'C')
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
