@@ -127,8 +127,8 @@ def main(supp_request_id, run_number):
         main_logger.info("All sources are successfully processed.")
         print("All sources are successfully processed.")
         # Preparing request level main input source
-        ordered_sources_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
-        counts_before_filter, counts_after_filter = create_main_input_source(ordered_sources_loaded, main_request_details)
+        ordered_sources_loaded = [x for x in sorted(sources_loaded, key=lambda x: x[1])]
+        current_count, main_request_table = create_main_input_source(ordered_sources_loaded, main_request_details)
         # Fetching the configured Filters table
         if main_request_details['isCustomFilter']:
             filter_table = SUPPRESSION_REQUEST_FILTERS_TABLE
@@ -138,7 +138,7 @@ def main(supp_request_id, run_number):
         mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS,(filter_table,main_request_details['filterId']))
         filter_details = mysql_cursor.fetchone()
         # Performing isps filtration
-
+        current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
 
         #data append

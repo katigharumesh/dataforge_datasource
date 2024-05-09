@@ -101,7 +101,7 @@ def load_input_source(type_of_request, source, main_request_details):
                         f" group by {grouping_fields} having count(1)< {touch_count}) b "
                         f"where {join_fields}")
                 sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
-                                  f" add column filename varchar as '{sf_source_name}'")
+                                  f" add column do_inputSource varchar as '{sf_source_name}', add column do_inputSourceMappingId varchar as '{mapping_id}'")
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
@@ -162,7 +162,7 @@ def create_main_datasource(sources_loaded, main_request_details):
             sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_datasource_table} add column email_md5 varchar as md5(email_id)")
-        sf_cursor.execute(f"alter table {temp_datasource_table} add column filename varchar as '{data_source_name}'")
+        sf_cursor.execute(f"alter table {temp_datasource_table} add column do_inputSource varchar as '{data_source_name}'")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
@@ -406,7 +406,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
-            sf_create_table_query += " varchar , filename varchar )"
+            sf_create_table_query += " varchar , do_inputSource varchar, do_inputSourceMappingId varchar as '{mapping_id}' )"
         else:
             last_run_table_name = table_name[:-1]+str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
@@ -543,7 +543,7 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
             compression = ""
 
         if is_old_file:
-            sf_delete_old_details_query = f"delete from {table_name} where filename = '{file}'"
+            sf_delete_old_details_query = f"delete from {table_name} where do_inputSource = '{file}'"
             sf_cursor.execute(sf_delete_old_details_query)
         if source_sub_type != 'A':
             stage_name = "STAGE_" + table_name
@@ -570,7 +570,7 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
                                  f"FIELD_OPTIONALLY_ENCLOSED_BY='\"' ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE {header_exists} {compression})"
             consumer_logger.info(f"Executing query: {sf_copy_into_query}")
             sf_cursor.execute(sf_copy_into_query)
-            sf_update_query = f"update {table_name} set filename = '{file}' where filename is null"
+            sf_update_query = f"update {table_name} set do_inputSource = '{file}' where do_inputSource is null"
             consumer_logger.info(f"Executing query: {sf_update_query}")
             sf_cursor.execute(sf_update_query)
             file_details_dict["count"] = sf_cursor.rowcount
@@ -704,7 +704,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         channel_name = main_request_details['channelName']
         feed_type = main_request_details['feedType']
         remove_duplicates = main_request_details['removeDuplicates']
-        filter_match_fields = main_request_details['FilterMatchFields'] + ',filename'
+        filter_match_fields = main_request_details['FilterMatchFields'] + ',do_inputSourceMappingId'
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
 
@@ -712,7 +712,19 @@ def create_main_input_source(sources_loaded, main_request_details):
         sf_cursor = sf_conn.cursor()
         main_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number)
         temp_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number) + "_TEMP"
-        main_input_source_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table} as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(sources_loaded)}"
+        generalized_sources = []
+        for source in sources_loaded:
+            input_source_mapping_table_name = source[0]
+            input_source_mapping_id = source[1]
+            if SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
+                generalized_sources.append(
+                    f"(select *,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name})")
+            else:
+                generalized_sources.append(input_source_mapping_table_name)
+
+        main_input_source_query = f"create or replace transient table" \
+                                  f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table}" \
+                                  f" as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(generalized_sources)}"
         print(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
@@ -744,22 +756,30 @@ def create_main_input_source(sources_loaded, main_request_details):
             counts_before_filter = counts_after_filter
 
         sf_cursor.execute(f"create or replace transient table {temp_input_source_table} like {main_input_source_table}")
+        sf_cursor.execute(f"select LISTAGG(COLUMN_NAME,',') WITHIN GROUP (ORDER BY COLUMN_NAME) from information_schema.COLUMNS "
+                          f"where table_name='{temp_input_source_table}'")
+        insert_fields = sf_cursor.fetchone()[0]
+        sf_cursor.execute(f"select LISTAGG(CONCAT('b.',COLUMN_NAME),',') WITHIN GROUP (ORDER BY COLUMN_NAME) from "
+                          f"information_schema.COLUMNS where table_name='{temp_input_source_table}'")
+        aliased_insert_fields = sf_cursor.fetchone()[0]
         if remove_duplicates == 0:
 #Pending Green all feed type
             if feed_type == 'F':
-                join_fields = 'a.email_id=b.email_id and a.listid=b.listid and a.filename=b.filename'
+                join_fields = 'a.email_id=b.email_id and a.listid=b.listid and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             if feed_type == 'T':
-                join_fields = 'a.email_id=b.email_id and a.filename=b.filename'
+                join_fields = 'a.email_id=b.email_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             filter_name = 'File level duplicates suppression'
         else:
             if feed_type == 'F':
-                join_fields = 'a.email_id=b.email_id and a.listid=b.listid'
+                join_fields = 'a.email_id=b.email_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             if feed_type == 'T':
                 join_fields = 'a.email_id=b.email_id'
             filter_name = 'Across files duplicates suppression'
         for source in sources_loaded:
+            input_source_mapping_id = source[1]
             sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
-                              f" where filename = '{source}') b on {join_fields} when not matched then insert ")
+                              f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when "
+                              f"not matched then insert {insert_fields} values {aliased_insert_fields} ")
         sf_cursor.execute(f"drop table {main_input_source_table}")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
@@ -767,8 +787,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                              (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
                               , filter_name, counts_before_filter, counts_after_filter, 0, 0))
-        counts_before_filter = counts_after_filter
-        return counts_before_filter, counts_after_filter
+        return counts_after_filter, main_input_source_table
 
     except Exception as e:
         print(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
@@ -781,7 +800,27 @@ def create_main_input_source(sources_loaded, main_request_details):
             sf_cursor.close()
             sf_conn.close()
 
-    
+def isps_filteration(current_count, main_request_table, isps, logger, mysql_cursor, main_request_details):
+    try:
+        counts_before_filter = current_count
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        isps_filter = str(isps).replace(",", "','")
+        isps_filteration_query = f"delete from {main_request_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')"
+        logger.info(f"Deleting non-configured isps records from {main_request_table}. Executing Query: {isps_filteration_query}")
+        sf_cursor.execute(isps_filteration_query)
+        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','NA','NA'
+                                                                      ,'Configured isps filteration',counts_before_filter,counts_after_filter,0,0))
+        return counts_after_filter
+    except Exception as e:
+        print(f"Exception occurred while performing isps filteration. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while performing isps filteration. {str(e)} ")
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
 
 
 
