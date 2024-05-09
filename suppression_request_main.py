@@ -137,11 +137,12 @@ def main(supp_request_id, run_number):
         # Fetching request filter details
         mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS,(filter_table,main_request_details['filterId']))
         filter_details = mysql_cursor.fetchone()
-        # Performing isps filteration
+        # Performing isps filtration
 
 
 
-
+        #data append
+        data_append(filter_details, final_table , main_logger)
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")

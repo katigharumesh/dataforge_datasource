@@ -175,6 +175,7 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId
 
 
 SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
+SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
 
 INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} " \
                                           f"(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId" \
@@ -186,3 +187,10 @@ FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppress
                                f"applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                f"applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                f"postalFields from %s where id = %s"
+
+
+
+POSTAL_TABLE = ""
+PROFILE_TABLE = ""
+POSTAL_MATCH_FIELDS = ""
+PROFILE_MATCH_FIELDS = ""

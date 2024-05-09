@@ -47,7 +47,7 @@ def load_input_source(type_of_request, source, main_request_details):
             source_table = process_file_type_request(request_id, source_table, run_number,
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
-                                                            int(port), username, password)
+                                                            port, username, password)
             return tuple(source_table,mapping_id)
 
         elif source_type == "D":
@@ -363,7 +363,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
             consumer_logger.info("Getting SFTP/FTP connection...")
-            source_obj = FileTransfer(hostname, port, username, password)
+            source_obj = FileTransfer(hostname, int(port), username, password)
             source_obj.connect()
             consumer_logger.info("SFTP/FTP connection established successfully.")
         elif source_sub_type in ("N", "D"):
@@ -782,3 +782,159 @@ def create_main_input_source(sources_loaded, main_request_details):
             sf_conn.close()
 
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def data_append(filter_details, result_table, logger):
+    if filter_details['appendPostalFields'] == "1":
+        result_table = append_fields(result_table, POSTAL_TABLE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger)
+    if filter_details['appendProfileFields'] == "1":
+        result_table = append_fields(result_table, PROFILE_TABLE, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def append_fields(result_table, source_table, to_append_columns, match_keys,  logger):
+    try:
+        logger.info("Executing method append_fields")
+        logger.info("Acquiring snowflake connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Snowflake connection acquired successfully...")
+        alter_fields_list = to_append_columns.split(",")
+        sf_alter_table_query = f"alter table  {result_table}  add column "
+        sf_alter_table_query += " varchar ,add column ".join(i for i in alter_fields_list)
+        sf_alter_table_query += " varchar"
+        logger.info(f"Executing query: {sf_alter_table_query}")
+        sf_cursor.execute(sf_alter_table_query)
+        logger.info(f"{result_table} altered successfully")
+        alter_fields_list = to_append_columns.split(",")
+        sf_update_table_query = f"MERGE INTO {result_table}  a using ({source_table}) b ON "
+        sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_keys.split(",")])
+        sf_update_table_query += " WHEN MATCHED THEN  UPDATE SET "
+        sf_update_table_query += ", ".join([f"a.{field} = b.{field}" for field in alter_fields_list])
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        logger.info("Fields appended successfully...")
+        return result_table
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
