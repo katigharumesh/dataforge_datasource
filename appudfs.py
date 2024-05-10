@@ -677,11 +677,13 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
 
 def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
     try:
-        logger.info("Selected DATA SOURCE  as source for input/match")
+        logger.info("Selected DATA SOURCE  as source for input/match/filter")
         if type_of_request == "I":
             logger.info("Selected as input source")
         if type_of_request == "M":
             logger.info("Selected for Match")
+        if type_of_request == "F":
+            logger.info("Selected for Filter")
         # fetch latest runNUmber
         logger.info(f" executing query: {SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
         mysql_cursor.execute(SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,))
@@ -781,6 +783,8 @@ def create_main_input_source(sources_loaded, main_request_details):
                               f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when "
                               f"not matched then insert {insert_fields} values {aliased_insert_fields} ")
         sf_cursor.execute(f"drop table {main_input_source_table}")
+        # alter table and add column do_suppression_status with default 'clean'  as value
+        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default 'CLEAN' , add column do_matchStatus varchar default 'NON_MATCH' ")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
@@ -822,128 +826,11 @@ def isps_filteration(current_count, main_request_table, isps, logger, mysql_curs
             sf_conn.close()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def data_append(filter_details, result_table, logger):
     if filter_details['appendPostalFields'] == "1":
         result_table = append_fields(result_table, POSTAL_TABLE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger)
     if filter_details['appendProfileFields'] == "1":
         result_table = append_fields(result_table, PROFILE_TABLE, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def append_fields(result_table, source_table, to_append_columns, match_keys,  logger):
@@ -976,4 +863,100 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+
+def update_default_values(type_of_request, main_request_table, logger):
+    try:
+        if type_of_request == "SUPPRESS_MATCH":
+            column_to_update = 'do_matchStatus'
+            value_to_set = 'MATCH'
+        if type_of_request == "SUPPRESS_FILTER":
+            column_to_update = 'do_suppressionStatus'
+            value_to_set = 'CLEAN'
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Snowflake connection acquired successfully...")
+        sf_update_table_query = f"UPDATE {main_request_table}  set {column_to_update} = '{value_to_set}' "
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        logger.info("Fields appended successfully...")
+        return main_request_table
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+def load_match_or_filter_file_sources(type_of_request, file_source, file_source_index, main_request_details):
+    os.makedirs(f"{LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/", exist_ok=True)
+    os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/", exist_ok=True)
+    temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/"
+    source_table = f"SUPPRESSION_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
+    consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",
+                                    log_file_path=f"{LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/",
+                                    log_to_stdout=True)
+    file_source_type_id = file_source['sourceId']
+    consumer_logger.info(f"Acquiring mysql connection...")
+    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+    mysql_cursor = mysql_conn.cursor(dictionary=True)
+    consumer_logger.info(f"Fetch source_type for the request id: {file_source_type_id}")
+    consumer_logger.info(f"Executing query: {FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,)}")
+    mysql_cursor.execute(FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,))
+    file_source_details = mysql_cursor.fetchone()
+    hostname = file_source_details['hostname']
+    port = file_source_details['port']
+    username = file_source_details['username']
+    password = file_source_details['password']
+    source_type = file_source_details['sourceType']
+    source_sub_type = file_source_details['sourceSubType']
+    input_data_dict = {'filePath': file_source['filePath'], 'delimeter': file_source['delimeter'], 'headerValue': file_source['headerValue']}
+    request_id = main_request_details['id']
+    run_number = main_request_details['runNumber']
+    schedule_id = main_request_details['ScheduleId']
+    source_table = process_file_type_request(request_id, source_table, run_number, schedule_id, source_sub_type, input_data_dict,
+                                             mysql_cursor, consumer_logger, "", temp_files_path, hostname,
+                                             port, username, password)
+
+    return tuple([file_source_index, source_table, file_source['columns']])
+
+
+
+def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_sources_loaded ,logger):
+    try:
+        if type_of_request == "SUPPRESS_MATCH":
+            column_to_update = 'do_matchStatus'
+            default_value = 'NON_MATCH'
+            value_to_set = 'MATCH'
+        if type_of_request == "SUPPRESS_FILTER":
+            column_to_update = 'do_suppressionStatus'
+            default_value = 'CLEAN'
+            value_to_set = ''
+        logger.info(f"Perform_filter method invoked..")
+        logger.info("Acquiring snowflake connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Snowflake connection acquired successfully...")
+        for filter_source in sorted_filter_sources_loaded:
+            match_fields = filter_source[1].split(",")
+            result_table = main_request_table
+            source_table = filter_source[0]
+            sf_update_table_query = f"MERGE INTO {result_table}  a using ({source_table}) b ON "
+            sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
+            sf_update_table_query += " WHEN MATCHED THEN  UPDATE SET "
+            if type_of_request == "SUPPRESS_FILTER":
+                value_to_set = source_table
+            sf_update_table_query += f"a.{column_to_update} = {value_to_set} where a.{column_to_update} = '{default_value}'"
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            logger.info("Fields appended successfully...")
+        return main_request_table
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
 

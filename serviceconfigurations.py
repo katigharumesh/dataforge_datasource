@@ -194,3 +194,5 @@ POSTAL_TABLE = ""
 PROFILE_TABLE = ""
 POSTAL_MATCH_FIELDS = ""
 PROFILE_MATCH_FIELDS = ""
+
+FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password,b.sourceType,b.sourceSubType from {SOURCE_TYPES_TABLE} b where id = %s "

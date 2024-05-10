@@ -1,3 +1,4 @@
+import queue
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -11,7 +12,9 @@ counts_after_filter = 0
 sources_loaded = []
 input_sources_count = 0
 consumer_kill_condition = False
-
+filter_and_match_file_sources_consumer_kill_condition = False
+match_or_filter_file_sources_loaded = []
+global match_or_filter_file_sources_loaded
 def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
     # mysql connection closing
     global input_sources_count
@@ -65,6 +68,114 @@ def load_input_sources_consumer(sources_queue, main_request_details, queue_empty
         # update status to error
         main_logger.error(f"Exception occurred: {str(e)}")
         consumer_kill_condition = True
+
+def filter_and_match_file_sources_producer(type_of_request, file_source_queue, file_source_details, queue_empty_condition, thread_count, main_logger):
+    main_logger.info(f"Processing producer for {type_of_request}")
+    main_logger.info(F" filter_and_match_file_sources_producer Execution Started: {time.ctime()}")
+    for i in range(len(file_source_details)):
+        file_source_queue.put(tuple([i, file_source_details[i]]))
+    main_logger.info(f"filter_and_match_file_sources_producer finished producing tasks")
+    print("filter_and_match_file_sources_producer finished producing tasks")
+    with queue_empty_condition:
+        for _ in range(thread_count):  # Put sentinel value for each consumer
+            file_source_queue.put(None)  # Put sentinel value in the queue
+        queue_empty_condition.notify_all()  # Notify all consumer threads
+    main_logger.info(f"filter_and_match_file_sources_producer Execution Ended: {time.ctime()} ")
+
+
+
+def filter_and_match_file_sources_consumer(type_of_request, file_source_queue, queue_empty_condition, main_logger, main_request_details):
+    try:
+        main_logger.info(f"Processing consumers for {type_of_request}")
+        global filter_and_match_file_sources_consumer_kill_condition
+        main_logger.info(f"Consumer execution started: {time.ctime()}")
+        while True:
+            if not filter_and_match_file_sources_consumer_kill_condition:
+                with queue_empty_condition:
+                    while file_source_queue.empty():  # Wait for tasks to be available in the queue
+                        queue_empty_condition.wait()
+                    file_source_tuple = file_source_queue.get()
+                    file_source_index = int(file_source_tuple[0])
+                    source_dict = file_source_tuple[1]
+                    file_source = json.loads(source_dict)  # Get task from the queue
+                    main_logger.info(f"Processing source : {str(file_source)}")
+                if file_source is None:  # Sentinel value indicating end of tasks
+                    main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
+                    break
+                main_logger.info("Calling function ... load_match_or_filter_file_sources(type_of_request, file_source)")
+                match_or_filter_file_sources_loaded.append(load_match_or_filter_file_sources(type_of_request, file_source, file_source_index, main_request_details))
+                file_source_queue.task_done()  # Notify the queue that the task is done
+            else:
+                break
+            main_logger.info(f"Consumer exiting")
+            print("Consumer exiting")
+    except Exception as e:
+        print(f"Exception occurred: {str(e)}")
+        # update status to error
+        main_logger.error(f"Exception occurred: {str(e)}")
+        filter_and_match_file_sources_consumer_kill_condition = True
+
+def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger):
+    if type_of_request == "SUPPRESS_MATCH":
+        key_to_fetch = 'matchedSourceDetails'
+    if type_of_request == "SUPPRESS_FILTER":
+        key_to_fetch = 'filterDataSources'
+    match_or_filter_source_details = json.loads(filter_details[key_to_fetch])
+    if len(match_or_filter_source_details) == 0:
+        main_logger.info(f"No {type_of_request} sources are chosen .Returning to main")
+        update_default_values(type_of_request, main_request_table, main_logger)
+        return main_request_table
+    match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
+    match_or_filter_file_source_queue = queue.Queue()
+    match_or_filter_queue_empty_condition = threading.Condition()
+    producer_thread = threading.Thread(target=filter_and_match_file_sources_producer, args=(type_of_request, match_or_filter_file_source_queue, match_or_filter_file_source_details, match_or_filter_queue_empty_condition, THREAD_COUNT, main_logger))
+    producer_thread.start()
+    consumer_threads = []
+    for i in range(THREAD_COUNT):
+        # consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
+        consumer_thread = threading.Thread(target=filter_and_match_file_sources_consumer, args=(
+            type_of_request, match_or_filter_file_source_queue, match_or_filter_queue_empty_condition, main_logger, main_request_details))
+        consumer_thread.start()
+        time.sleep(10)
+        consumer_threads.append(consumer_thread)
+    # Wait for producer thread to finish
+    producer_thread.join()
+
+    # Wait for consumer threads to finish
+    for consumer_thread in consumer_threads:
+        consumer_thread.join()
+    print("match_or_filter_file_sources_loaded : " + str(match_or_filter_file_sources_loaded))
+    if len(match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
+        main_logger.info(
+            f"Only {len(match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+        print(
+            f"Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+        mysql_cursor.execute(DELETE_FILE_DETAILS,
+                             (main_request_details['ScheduleId'], main_request_details['runNumber']))
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
+                                                      f'Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
+        update_next_schedule_due(supp_request_id, run_number, main_logger)
+        os.remove(pid_file)
+        return
+    main_logger.info(
+        f" Match file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
+    sorted_match_or_filter_sources_loaded = [tuple(t[1], t[2]) for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
+    # adding datasource and field to add datasource tables and field sources
+    data_source_filter_list = list(match_or_filter_source_details['DataSource'])
+    data_source_filter_list.extend(list(match_or_filter_source_details['ByField']))
+    for i in data_source_filter_list:
+        data_source_details_dict = json.loads(i)
+        data_source_table_name = data_source_input("F", data_source_details_dict['dataSourceId'], mysql_cursor,main_logger)
+        match_columns = data_source_details_dict['columns']
+        sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, match_columns))
+    if type_of_request == "SUPPRESS_MATCH":
+        main_request_table = perform_match(main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
+    if type_of_request == "SUPPRESS_FILTER":
+        main_request_table = perform_filter(main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
+    main_logger.info(f"All {type_of_request} sources are successfully processed.")
+    print(f"All {type_of_request} sources are successfully processed.")
+    main_logger.info(f"Data {type_of_request} Success")
+    return main_request_table
 
 
 # Main function
@@ -140,9 +251,16 @@ def main(supp_request_id, run_number):
         # Performing isps filtration
         current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
+        # Data Match Selection
+        main_request_table = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger)
+
+        #Data filter Selection
+        main_request_table = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger)
+
+
 
         #data append
-        data_append(filter_details, final_table , main_logger)
+        data_append(filter_details, main_request_table , main_logger)
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
