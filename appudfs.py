@@ -6,7 +6,7 @@ def load_input_source(type_of_request, source, main_request_details):
     try:
         if type_of_request == "SUPPRESSION_REQUEST":
             request_id = source['requestId']
-        elif type_of_request == "SUPPRESSION_DATASOURCE":
+        elif type_of_request == "SUPPRESSION_DATASET":
             request_id = source['dataSourceId']
         mapping_id = source['id']
         data_source_id = source['dataSourceId']
@@ -108,7 +108,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 #mysql_cursor.execute(DELETE_FILE_DETAILS, (schedule_id, run_number, mapping_id))
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
-                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', 'NA', 'NA','C',''))
+                    'DF_DATASET SERVICE', 'DF_DATASET SERVICE', 'NA', 'NA','C',''))
                 return tuple(source_table,mapping_id)
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
@@ -151,8 +151,8 @@ def create_main_datasource(sources_loaded, main_request_details):
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        main_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
-        temp_datasource_table = MAIN_DATASOURCE_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
+        main_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
+        temp_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select {filter_match_fields} from {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
@@ -408,7 +408,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += " varchar , do_inputSource varchar, do_inputSourceMappingId varchar as '{mapping_id}' )"
         else:
-            last_run_table_name = table_name[:-1]+str(last_successful_run_number)
+            last_run_table_name = table_name[:table_name.rindex('_')+1]+str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)
@@ -428,7 +428,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                     last_modified_time = file_details_dict["last_modified_time"]
                     file_status = file_details_dict['status']
                     error_desc = file_details_dict['error_msg']
-                    mysql_cursor.execute(INSERT_FILE_DETAILS, (schedule_id, run_number, mapping_id, count, fileName, 'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time, file_status , error_desc))
+                    mysql_cursor.execute(INSERT_FILE_DETAILS, (schedule_id, run_number, mapping_id, count, fileName, 'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
@@ -462,7 +462,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                 error_desc = file_details_dict['error_msg']
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     schedule_id, run_number, mapping_id, count, fileName,
-                    'DF_DATASOURCE SERVICE', 'DF_DATASOURCE SERVICE', size, last_modified_time,file_status , error_desc))
+                    'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
 
         else:
@@ -493,6 +493,9 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
             file_details_dict['filename'] = file
             file_details_dict['status'] = 'E'
             file_details_dict['error_msg'] = 'The given file is not in required extension.'
+            file_details_dict["count"] = '0'
+            file_details_dict["size"] = 'NA'
+            last_modified_time = file_details_dict["last_modified_time"] = 'NA'
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
@@ -589,7 +592,7 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
         requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
                        f"date(nextscheduleDue) as nextscheduledate from {SCHEDULE_TABLE} where status='I' " \
                        f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
-        logger.info(f"requestquery ::{requestquery}")
+        logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
         mysqlcur.execute(requestquery)
         requestList = mysqlcur.fetchall()
         print(requestList)
@@ -605,13 +608,14 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                     excludeDates = request[6].split()
 
             scheduleNextquery = f"update {SCHEDULE_TABLE} set status='W',runnumber=runnumber+1 where id={id}"
-            logger.info(f"scheduleNextquery :: {scheduleNextquery}")
+            logger.info(f"Updating schedule status and runnumber, query :: {scheduleNextquery}")
             mysqlcur.execute(scheduleNextquery)
 
             if (recurrenceType is not None and recurrenceType == 'H'):
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"case when date_add(now(),INTERVAL 1 HOUR) < {endDate} Then date_add(now(),INTERVAL 1 HOUR)" \
-                                    f"else {endDate} end where id={id}"
+                                    f"case when date_add(now(),INTERVAL 1 HOUR) < '{endDate}' Then date_add(now(),INTERVAL 1 HOUR)" \
+                                    f"else '{endDate}' end where id={id}"
+                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                 mysqlcur.execute(nextschedulequery)
             if (recurrenceType is not None and recurrenceType == 'D'):
                 if excludeDates is not None:
@@ -628,7 +632,8 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                     nextscheduleDuep = datetime.now() + timedelta(days=1)
                     nextscheduledatep = datetime.now().date() + timedelta(days=1)
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if(%s<%s,%s,%s) where id={id}"
+                                    f"if('%s'<'%s','%s','%s') where id={id}"
+                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery , (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
                 mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
 
             if (recurrenceType is not None and recurrenceType == 'W'):
@@ -643,8 +648,9 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                     nextscheduleDuep = datetime.now() + timedelta(days=7)
 
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if(%s<%s,%s,%s) where id={id}"
+                                    f"if('%s'<'%s','%s','%s') where id={id}"
                 # logger.info(nextschedulequery)
+                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
                 mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
 
             if (recurrenceType is not None and recurrenceType == 'M'):
@@ -658,13 +664,15 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                 else:
                     nextscheduleDuep = datetime.now() + timedelta(months=1)
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if(%s<%s,%s,%s) where id={id}"
+                                    f"if('%s'<'%s','%s','%s') where id={id}"
+                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
                 mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
 
             if recurrenceType is None and request_status == 'C':
                 update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
+                logger.info(f"Updating Schedule table status for successful execution of adhoc type request, query : {update_schedule_status}")
                 mysqlcur.execute(update_schedule_status)
-
+            logger.info("Successfully updated schedule table details")
     except Exception as e:
         logger.error(F"Error in updatenextscheduledue() :: {e}")
         logger.error(traceback.print_exc())
@@ -672,6 +680,7 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
         if 'connection' in locals() and mysql_conn.is_connected():
             mysqlcur.close()
             mysql_conn.close()
+
 
 
 
@@ -685,13 +694,13 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         if type_of_request == "F":
             logger.info("Selected for Filter")
         # fetch latest runNUmber
-        logger.info(f" executing query: {SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
-        mysql_cursor.execute(SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY, (datasource_id,))
+        logger.info(f" executing query: {SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
+        mysql_cursor.execute(SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,))
         result = mysql_cursor.fetchone()
         max_runNumber = result['runNumber']
         status = result['status']
         if status == "C":
-            table_name = f"{MAIN_DATASOURCE_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
+            table_name = f"{MAIN_DATASET_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
             return table_name
         else:
             raise Exception("Given dataSource is not actively working. So making this request error.")

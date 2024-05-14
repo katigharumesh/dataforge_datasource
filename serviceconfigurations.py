@@ -82,19 +82,19 @@ MYSQL_CONFIGS = {
 
 SCHEDULE_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE'
 SCHEDULE_STATUS_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE_STATUS'
-DATASOURCE_TABLE = 'SUPPRESSION_DATASOURCE'
-DATASOURCE_MAPPING_TABLE = 'SUPPRESSION_DATASOURCE_MAPPING'
+DATASET_TABLE = 'SUPPRESSION_DATASOURCE'
+DATASET_MAPPING_TABLE = 'SUPPRESSION_DATASOURCE_MAPPING'
 SOURCE_TYPES_TABLE = 'SUPPRESSION_SOURCE_TYPES'
 FILE_DETAILS_TABLE = 'SUPPRESSION_DATASOURCE_FILE_DETAILS'
 
-FETCH_MAIN_DATASOURCE_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
-                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId as ScheduleId,b.runNumber from {DATASOURCE_TABLE} a ' \
+FETCH_MAIN_DATASET_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
+                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId as ScheduleId,b.runNumber from {DATASET_TABLE} a ' \
                                 f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
 
 FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
                        'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
-                       f'{DATASOURCE_MAPPING_TABLE} a join ' \
+                       f'{DATASET_MAPPING_TABLE} a join ' \
                        f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.dataSourceId=%s'
 
 INSERT_FILE_DETAILS = f'insert into {FILE_DETAILS_TABLE}(dataSourceScheduleId,runNumber,dataSourceMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc)' \
@@ -118,9 +118,9 @@ SNOWFLAKE_CONFIGS = {
     "schema": 'INFS_LPT_QA'
 }
 
-STAGE_TABLE_PREFIX = 'STAGE_SUPPRESSION_DATASOURCE_MAPPING_'
-SOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_MAPPING_'
-MAIN_DATASOURCE_TABLE_PREFIX = 'SUPPRESSION_DATASOURCE_'
+STAGE_TABLE_PREFIX = 'STAGE_DO_DATASET_MAPPING_'
+SOURCE_TABLE_PREFIX = 'DO_DATASET_MAPPING_'
+MAIN_DATASET_TABLE_PREFIX = 'DO_DATASET_'
 
 #OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<'
 # , 'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
@@ -174,7 +174,7 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId
 
 
 
-SUPP_DATASOURCE_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
+SUPP_DATASET_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
 SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
 
 INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} " \

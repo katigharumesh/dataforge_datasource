@@ -50,7 +50,7 @@ def load_input_sources_consumer(sources_queue, main_request_details, queue_empty
                     main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                     break
                 main_logger.info("Calling function ... load_input_source")
-                sources_loaded.append(load_input_source("SUPPRESSION_DATASOURCE", source, main_request_details))
+                sources_loaded.append(load_input_source("SUPPRESSION_DATASET", source, main_request_details))
                 sources_queue.task_done()  # Notify the queue that the task is done
             else:
                 break
@@ -85,8 +85,8 @@ def main(request_id, run_number):
         start_time = time.time()
         main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
         delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
-        main_logger.info(f"Fetch main data source details, executing : {FETCH_MAIN_DATASOURCE_DETAILS,(request_id, run_number)}")
-        mysql_cursor.execute(FETCH_MAIN_DATASOURCE_DETAILS,(request_id, run_number))
+        main_logger.info(f"Fetch main data source details, executing : {FETCH_MAIN_DATASET_DETAILS,(request_id, run_number)}")
+        mysql_cursor.execute(FETCH_MAIN_DATASET_DETAILS,(request_id, run_number))
         main_request_details = mysql_cursor.fetchone()
         sources_queue = queue.Queue()
         queue_empty_condition = threading.Condition()
