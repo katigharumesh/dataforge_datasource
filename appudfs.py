@@ -35,7 +35,7 @@ def load_input_source(type_of_request, source, main_request_details):
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
         if source_id == "0" and data_source_id != "" :
-            return tuple(data_source_input("I", data_source_id, mysql_cursor, consumer_logger),mapping_id)
+            return tuple(data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger),mapping_id)
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -81,9 +81,9 @@ def load_input_source(type_of_request, source, main_request_details):
                     if 'touchCount' in filter:
                         touch_filter = True
                         touch_count = filter['touchCount']
-                        if main_request_details['feedType'] == 'FirstParty':
-                            grouping_fields = 'listid,email_id'
-                            join_fields = 'a.listid=b.listid and a.email_id=b.email_id'
+                        if main_request_details['feedType'] == 'F':
+                            grouping_fields = 'list_id,email_id'
+                            join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
                         else:
                             grouping_fields = 'email_id'
                             join_fields = 'a.email_id=b.email_id'
@@ -687,13 +687,7 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
 
 def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
     try:
-        logger.info("Selected DATA SOURCE  as source for input/match/filter")
-        if type_of_request == "I":
-            logger.info("Selected as input source")
-        if type_of_request == "M":
-            logger.info("Selected for Match")
-        if type_of_request == "F":
-            logger.info("Selected for Filter")
+        logger.info(f"Selected Dataset as source for {type_of_request}")
         # fetch latest runNUmber
         logger.info(f" executing query: {SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
         mysql_cursor.execute(SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,))
@@ -754,10 +748,10 @@ def create_main_input_source(sources_loaded, main_request_details):
         counts_before_filter = counts_after_filter
         if feed_type != 'A':
             if feed_type == 'F':
-                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where listid not in (select listid from {FP_LISTIDS_SF_TABLE})")
+                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select listid from {FP_LISTIDS_SF_TABLE})")
                 filter_name = 'Third Party listids suppression'
             elif feed_type == 'T':
-                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where listid in (select listid from {FP_LISTIDS_SF_TABLE})")
+                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select listid from {FP_LISTIDS_SF_TABLE})")
                 filter_name = 'First Party listids suppression'
             else:
                 raise Exception("Unknown feed_type has been configured. Please look into this...")
@@ -777,7 +771,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         if remove_duplicates == 0:
 #Pending Green all feed type
             if feed_type == 'F':
-                join_fields = 'a.email_id=b.email_id and a.listid=b.listid and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
+                join_fields = 'a.email_id=b.email_id and a.list_id=b.list_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             if feed_type == 'T':
                 join_fields = 'a.email_id=b.email_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             filter_name = 'File level duplicates suppression'
@@ -824,7 +818,7 @@ def isps_filteration(current_count, main_request_table, isps, logger, mysql_curs
         logger.info(f"Deleting non-configured isps records from {main_request_table}. Executing Query: {isps_filteration_query}")
         sf_cursor.execute(isps_filteration_query)
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','NA','NA'
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
                                                                       ,'Configured isps filteration',counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
@@ -932,32 +926,70 @@ def load_match_or_filter_file_sources(type_of_request, file_source, file_source_
 
 
 
-def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_sources_loaded ,logger):
+def perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_filter_sources_loaded ,mysql_cursor, logger, current_count):
     try:
+        counts_before_filter = current_count
+        is_first_match_filter = True
         if type_of_request == "SUPPRESS_MATCH":
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
         if type_of_request == "SUPPRESS_FILTER":
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
-        logger.info(f"perform_filter_or_match method invoked..")
+        logger.info(f"perform_filter_or_match method for {type_of_request} invoked..")
         logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         logger.info("Snowflake connection acquired successfully...")
         for filter_source in sorted_filter_sources_loaded:
-            match_fields = filter_source[1].split(",")
-            result_table = main_request_table
-            source_table = filter_source[0]
-            sf_update_table_query = f"UPDATE {result_table}  a  SET  a.{column_to_update} = '{source_table}' FROM ({source_table}) b WHERE "
-            sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
-            sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
+            if filter_source[2] == 'ByField':
+                filter = filter_source[1]
+                if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
+                    filter['value'] = f"%{filter['value']}%"
+                if filter['dataType'] != 'number' and filter['searchType'] != '>=':
+                    filter['value'] = "'" + filter['value'] + "'"
+                if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
+                    filter['value'] = "(" + filter['value'] + ")"
+                elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
+                    filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
+                if filter['searchType'] == 'between' and filter['dataType'] != 'number':
+                    filter['value'] = filter['value'].replace(',', '\' and \'')
+                elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
+                    filter['value'] = filter['value'].replace(',', ' and ')
+                if filter['searchType'] == '>=':
+                    filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}"
+                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
+                                        f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
+            else:
+                match_fields = filter_source[1].split(",")
+                source_table = filter_source[0]
+                filter_name = source_table
+                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM ({source_table}) b WHERE "
+                sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
+                sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
+            if type_of_request == "SUPPRESS_FILTER":
+                sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
             logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
-        logger.info(f"{type_of_request} done successfully...")
-        return main_request_table
+            if type_of_request == "SUPPRESS_MATCH":
+                if is_first_match_filter:
+                    counts_before_filter = 0
+                    is_first_match_filter = False
+                counts_after_filter = counts_before_filter + sf_cursor.rowcount
+                filter_type = 'Match'
+            elif type_of_request == "SUPPRESS_FILTER":
+                counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                filter_type = 'Suppression'
+            mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                 (main_request_details['id'], main_request_details['ScheduleId'],
+                                  main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
+                                  counts_before_filter, counts_after_filter, 0, 0))
+            counts_before_filter = counts_after_filter
+            logger.info(f"perform_filter_or_match method for {type_of_request} executed successfully...")
+        return counts_after_filter
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
         raise Exception(str(e))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():

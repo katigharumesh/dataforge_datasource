@@ -115,16 +115,23 @@ def filter_and_match_file_sources_consumer(type_of_request, file_source_queue, q
         main_logger.error(f"Exception occurred: {str(e)}")
         filter_and_match_file_sources_consumer_kill_condition = True
 
-def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger):
+def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count):
     if type_of_request == "SUPPRESS_MATCH":
         key_to_fetch = 'matchedSourceDetails'
+        channel_level_filter = filter_details['applyChannelFileMatch']
     if type_of_request == "SUPPRESS_FILTER":
         key_to_fetch = 'filterDataSources'
+        channel_level_filter = filter_details['applyChannelFileSuppression']
     match_or_filter_source_details = json.loads(filter_details[key_to_fetch])
-    if len(match_or_filter_source_details) == 0:
-        main_logger.info(f"No {type_of_request} sources are chosen .Returning to main")
+    sorted_match_or_filter_sources_loaded = []
+    if len(match_or_filter_source_details) == 0 and channel_level_filter == 0:
+        main_logger.info(f"No {type_of_request} sources are chosen and channel level files filter is also not selected. Returning to main")
         update_default_values(type_of_request, main_request_table, main_logger)
-        return main_request_table
+        return current_count
+    elif len(match_or_filter_source_details) == 0 and channel_level_filter == 1:
+        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter")
+
+
     match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
     match_or_filter_file_source_queue = queue.Queue()
     match_or_filter_queue_empty_condition = threading.Condition()
@@ -159,23 +166,21 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
         return
     main_logger.info(
         f" Match file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
-    sorted_match_or_filter_sources_loaded = [tuple(t[1], t[2]) for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
-    # adding datasource and field to add datasource tables and field sources
+    sorted_match_or_filter_sources_loaded += [tuple(t[1], t[2], 'FileSource') for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
     data_source_filter_list = list(match_or_filter_source_details['DataSource'])
-    data_source_filter_list.extend(list(match_or_filter_source_details['ByField']))
-    # for byFIeld shyam will add code
     for i in data_source_filter_list:
         data_source_details_dict = json.loads(i)
-        data_source_table_name = data_source_input("F", data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
+        data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
         match_columns = data_source_details_dict['columns']
-        sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, match_columns))
-
-    main_request_table = perform_filter_or_match(type_of_request, main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
+        sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, match_columns, 'DataSource'))
+    for filter in list(match_or_filter_source_details['ByField']):
+        sorted_match_or_filter_sources_loaded.append(tuple('', filter, 'ByField'))
+    current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_match_or_filter_sources_loaded, mysql_cursor, main_logger, current_count)
 
     main_logger.info(f"All {type_of_request} sources are successfully processed.")
     print(f"All {type_of_request} sources are successfully processed.")
     main_logger.info(f"Data {type_of_request} Success")
-    return main_request_table
+    return current_count
 
 
 # Main function
@@ -252,10 +257,10 @@ def main(supp_request_id, run_number):
         current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
         # Data Match Selection
-        main_request_table = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger)
+        current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
         #Data filter Selection
-        main_request_table = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger)
+        current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
 
 
