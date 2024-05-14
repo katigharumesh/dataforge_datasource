@@ -936,12 +936,10 @@ def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_s
         if type_of_request == "SUPPRESS_MATCH":
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
-            value_to_set = 'MATCH'
         if type_of_request == "SUPPRESS_FILTER":
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
-            value_to_set = ''
-        logger.info(f"Perform_filter method invoked..")
+        logger.info(f"perform_filter_or_match method invoked..")
         logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -950,12 +948,9 @@ def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_s
             match_fields = filter_source[1].split(",")
             result_table = main_request_table
             source_table = filter_source[0]
-            sf_update_table_query = f"MERGE INTO {result_table}  a using ({source_table}) b ON "
+            sf_update_table_query = f"UPDATE {result_table}  a  SET  a.{column_to_update} = '{source_table}' FROM ({source_table}) b WHERE "
             sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
-            sf_update_table_query += " WHEN MATCHED THEN  UPDATE SET "
-            if type_of_request == "SUPPRESS_FILTER":
-                value_to_set = source_table
-            sf_update_table_query += f"a.{column_to_update} = {value_to_set} where a.{column_to_update} = '{default_value}'"
+            sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
             logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
             logger.info("Fields appended successfully...")

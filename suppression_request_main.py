@@ -163,15 +163,15 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     # adding datasource and field to add datasource tables and field sources
     data_source_filter_list = list(match_or_filter_source_details['DataSource'])
     data_source_filter_list.extend(list(match_or_filter_source_details['ByField']))
+    # for byFIeld shyam will add code
     for i in data_source_filter_list:
         data_source_details_dict = json.loads(i)
-        data_source_table_name = data_source_input("F", data_source_details_dict['dataSourceId'], mysql_cursor,main_logger)
+        data_source_table_name = data_source_input("F", data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
         match_columns = data_source_details_dict['columns']
         sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, match_columns))
-    if type_of_request == "SUPPRESS_MATCH":
-        main_request_table = perform_match(main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
-    if type_of_request == "SUPPRESS_FILTER":
-        main_request_table = perform_filter(main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
+
+    main_request_table = perform_filter_or_match(type_of_request, main_request_table, sorted_match_or_filter_sources_loaded, main_logger)
+
     main_logger.info(f"All {type_of_request} sources are successfully processed.")
     print(f"All {type_of_request} sources are successfully processed.")
     main_logger.info(f"Data {type_of_request} Success")
