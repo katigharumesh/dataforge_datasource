@@ -1,3 +1,4 @@
+import snowflake.connector.config_manager
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -953,7 +954,7 @@ def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_s
             sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
             logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
-            logger.info("Fields appended successfully...")
+        logger.info(f"{type_of_request} done successfully...")
         return main_request_table
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}")
@@ -963,4 +964,248 @@ def perform_filter_or_match(type_of_request, main_request_table, sorted_filter_s
             sf_cursor.close()
             sf_conn.close()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# adding code for suppression methods
+def apply_green_global_suppression(source_table, result_breakdown_flag , logger):
+    try:
+        result = {}
+        logger.info(f"Applying Green Global Suppression for the given table {source_table}")
+        logger.info("Acquiring snowflake Connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Acquired snowflake connection successfully")
+        for supp_table in GREEN_GLOBAL_SUPP_TABLES:
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_table}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[supp_table] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
+        if result_breakdown_flag:
+            return {'Green_Global_Suppression': sum(result.values())}
+        else:
+            return result
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
+
+def apply_green_feed_level_suppression(source_table, result_breakdown_flag , logger):
+    try:
+        result = {}
+        logger.info(f"Applying Green Feed Level Suppression for the given table {source_table}")
+        logger.info("Acquiring snowflake Connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Acquired snowflake connection successfully")
+        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email']:
+            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
+                temp_table_name = supp_table.split()
+                try:
+                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
+                except:
+                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[value_to_set] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
+                temp_table_name = supp_table.split()
+                try:
+                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
+                except:
+                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[value_to_set] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
+        if result_breakdown_flag:
+            return {'Green_Feed_Level_Suppression': sum(result.values())}
+        else:
+            return result
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
+
+def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logger):
+    try:
+        result = {}
+        logger.info(f"Applying INFS Feed Level Suppression for the given table {source_table}")
+        logger.info("Acquiring snowflake Connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        logger.info("Acquired snowflake connection successfully")
+        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email']:
+            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
+                temp_table_name = supp_table.split()
+                try:
+                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
+                except:
+                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[value_to_set] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
+                temp_table_name = supp_table.split()
+                try:
+                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
+                except:
+                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[value_to_set] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
+            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
+                temp_table_name = supp_table.split()
+                try:
+                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
+                except:
+                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
+            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  a.PROFILE_ID = b.profileid AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' "
+            logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            rows_effected = sf_cursor.rowcount
+            result[value_to_set] = int(rows_effected)
+            logger.info(f"{supp_table} suppression done successfully...")
+        logger.info("Applying must and should suppressions...")
+        # unsub_details_oteam
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'unsub_details_oteam' FROM unsub_details_oteam b where iff(a.listid='2','3188',a.listid)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        rows_effected = sf_cursor.rowcount
+        if 'unsub_details_oteam' in result.keys():
+            result['unsub_details_oteam'] += int(rows_effected)
+        else:
+            result['unsub_details_oteam'] = int(rows_effected)
+        # BLUE_CLIENT_DATA_SUPPRESSION
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'BLUE_CLIENT_DATA_SUPPRESSION' FROM BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.listid in (select listid from BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS) AND a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        rows_effected = sf_cursor.rowcount
+        if value_to_set in result.keys():
+            result[value_to_set] += int(rows_effected)
+        else:
+            result[value_to_set] = int(rows_effected)
+        # ACCOUNT NAME  SUPPRESSION
+        logger.info("Creating a temp table for the source table")
+        sf_create_temp_table_query = f" create table {source_table}_temp clone {source_table}"
+        logger.info(f"Executing query : {sf_create_temp_table_query}")
+        sf_cursor.execute(sf_create_temp_table_query)
+        sf_alter_temp_table_query = f"alter table {source_table}_temp add column account_name varchar"
+        logger.info(f" Executing query : {sf_alter_temp_table_query}")
+        sf_cursor.execute(sf_alter_temp_table_query)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.account_name=b.account_name from INFS_ORANGE_MAPPING_TABLE b where a.LIST_ID=b.listid"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'unsub_details_oteam' from (select c.email,d.account_name from unsub_details_oteam c join INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'unsub_details_oteam' in result.keys():
+            result['unsub_details_oteam'] += int(rows_effected)
+        else:
+            result['unsub_details_oteam'] = int(rows_effected)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'APT_CUSTOM_CONVERSIONS_DATA_OTEAM' from (select c.profileid,d.account_name from APT_CUSTOM_CONVERSIONS_DATA_OTEAM c join INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.PROFILE_ID=b.profileid and a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'APT_CUSTOM_CONVERSIONS_DATA_OTEAM' in result.keys():
+            result['APT_CUSTOM_CONVERSIONS_DATA_OTEAM'] += int(rows_effected)
+        else:
+            result['APT_CUSTOM_CONVERSIONS_DATA_OTEAM'] = int(rows_effected)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'EMAIL_REPLIES_TRANSACTIONAL' from (select email,listid from EMAIL_REPLIES_TRANSACTIONAL a join GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326) c join INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'EMAIL_REPLIES_TRANSACTIONAL' in result.keys():
+            result['EMAIL_REPLIES_TRANSACTIONAL'] += int(rows_effected)
+        else:
+            result['EMAIL_REPLIES_TRANSACTIONAL'] = int(rows_effected)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'INFS_UNSUBS_ACCOUNT_WISE' from (select c.email,d.account_name from INFS_UNSUBS_ACCOUNT_WISE c join INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'INFS_UNSUBS_ACCOUNT_WISE' in result.keys():
+            result['INFS_UNSUBS_ACCOUNT_WISE'] += int(rows_effected)
+        else:
+            result['INFS_UNSUBS_ACCOUNT_WISE'] = int(rows_effected)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'infs_account_level_static_suppression_data' from (select c.email,d.account_name from infs_account_level_static_suppression_data c join INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'infs_account_level_static_suppression_data' in result.keys():
+            result['infs_account_level_static_suppression_data'] += int(rows_effected)
+        else:
+            result['infs_account_level_static_suppression_data'] = int(rows_effected)
+        sf_update_temp_table_query = f"update {source_table}_temp a set a.do_suppressionStatus = 'BLUE_CLIENT_DATA_SUPPRESSION' from BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        if 'BLUE_CLIENT_DATA_SUPPRESSION' in result.keys():
+            result['BLUE_CLIENT_DATA_SUPPRESSION'] += int(rows_effected)
+        else:
+            result['BLUE_CLIENT_DATA_SUPPRESSION'] = int(rows_effected)
+
+        logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
+        if result_breakdown_flag:
+            return {'Green_Global_Suppression': sum(result.values())}
+        else:
+            return result
+    except Exception as e:
+        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        raise Exception(str(e))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 

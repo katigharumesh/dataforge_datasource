@@ -1,4 +1,4 @@
-#import statements
+# import statements
 
 import glob
 import json
@@ -36,19 +36,17 @@ import boto3
 
 ''' DATA SOURCE CONFIGS '''
 
-#SCRIPT_PATH = r"D:\tmp\data_forge"
-#LOG_PATH = r"D:\tmp\data_forge\app_logs"
+# SCRIPT_PATH = r"D:\tmp\data_forge"
+# LOG_PATH = r"D:\tmp\data_forge\app_logs"
 SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
 LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
-
-
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
 
-THREAD_COUNT = 2 # thread count
+THREAD_COUNT = 2  # thread count
 
 skype_configurations = {
     'url': 'http://zds-prod-ext-greenapp1-vip.bo3.e-dialog.com/sendSkypeAlerts/index.php?key=',
@@ -88,8 +86,8 @@ SOURCE_TYPES_TABLE = 'SUPPRESSION_SOURCE_TYPES'
 FILE_DETAILS_TABLE = 'SUPPRESSION_DATASOURCE_FILE_DETAILS'
 
 FETCH_MAIN_DATASET_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.dataProcessingType,' \
-                                f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId as ScheduleId,b.runNumber from {DATASET_TABLE} a ' \
-                                f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
+                             f'a.FilterMatchFields,a.isps,b.dataSourceScheduleId as ScheduleId,b.runNumber from {DATASET_TABLE} a ' \
+                             f'join {SCHEDULE_STATUS_TABLE} b on a.id=b.dataSourceId where a.id=%s and b.runNumber=%s'
 
 FETCH_SOURCE_DETAILS = f'select a.id,a.dataSourceId,a.sourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                        'b.sfAccount,b.sfDatabase,' \
@@ -122,7 +120,7 @@ STAGE_TABLE_PREFIX = 'STAGE_DO_DATASET_MAPPING_'
 SOURCE_TABLE_PREFIX = 'DO_DATASET_MAPPING_'
 MAIN_DATASET_TABLE_PREFIX = 'DO_DATASET_'
 
-#OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<'
+# OPERATOR_MAPPING = {'on': '=', 'after': '>', 'before': '<', 'between': 'between', 'greater than': '>', 'less than': '<'
 # , 'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
 #                    'not exists in': 'not in', 'predefined daterange': '>='}
 
@@ -134,13 +132,9 @@ SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
 
-
-
-
-
 '''' SUPPRESSION REQUEST CONFIGS '''
 
-#SUPP_SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
+# SUPP_SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
 SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
 SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
 SUPP_FILE_PATH = SUPP_SCRIPT_PATH + "supp_r_logs"  # local file path - mount to download the temp files
@@ -161,18 +155,15 @@ FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
-
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
-                                 f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
-                                 f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
+                             f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
+                             f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
-                       'b.sfAccount,b.sfDatabase,' \
-                       'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
-                       f'{SUPP_MAPPING_TABLE} a left join ' \
-                       f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s '
-
-
+                            'b.sfAccount,b.sfDatabase,' \
+                            'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
+                            f'{SUPP_MAPPING_TABLE} a left join ' \
+                            f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s '
 
 SUPP_DATASET_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
 SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
@@ -188,11 +179,51 @@ FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppress
                                f"applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                f"postalFields from %s where id = %s"
 
-
-
 POSTAL_TABLE = ""
 PROFILE_TABLE = ""
 POSTAL_MATCH_FIELDS = ""
 PROFILE_MATCH_FIELDS = ""
 
 FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password,b.sourceType,b.sourceSubType from {SOURCE_TYPES_TABLE} b where id = %s "
+
+# SUPPRESSIONS tables
+
+GREEN_GLOBAL_SUPP_TABLES = ("GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
+                            "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
+                            "GREEN_LPT.PFM_UNIVERSE_UNSUBS",
+                            "GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE",
+                            "GREEN_LPT.GREEN_UNSUBS",
+                            "APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+                            "APT_CUSTOM_GLOBAL_SOFTINACTIVE")
+GREEN_FEED_LEVEL_SUPP_TABLES = {
+    'email': (
+        "INFS_LPT.GLOBAL_COMPLAINER_EMAILS",
+        "INFS_LPT.ABUSE_DETAILS",
+        "PFM_FLUENT_REGISTRATIONS_CANADA",
+        "APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+        "APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+    ),
+    'email_listid': (
+        "select email,listid from UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) "
+    )
+}
+
+INFS_FEED_LEVEL_SUPP_TABLES = {
+    'email': (
+        "infs_softs",
+        "infs_hards",
+        "APT_ADHOC_GLOBAL_SUPP_20210204",
+        "abuse_details",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA"
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+    ),
+    'email_listid': (
+        "unsub_details_oteam",
+        "select email,listid from EMAIL_REPLIES_TRANSACTIONAL a join GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326",
+        "select email,listid from INFS_UNSUBS_ACCOUNT_WISE a join (select distinct listid,account_name from GM_SUBID_DOMAIN_DETAILS) b on a.account_name=b.account_name",
+        "infs_account_level_static_suppression_data"
+    ),
+    'listid_profileid': (
+        "APT_CUSTOM_CONVERSIONS_DATA_OTEAM"
+    )
+}
