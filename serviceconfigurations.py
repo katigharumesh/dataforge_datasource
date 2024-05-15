@@ -15,6 +15,7 @@ from threading import Thread
 import threading
 import mysql.connector
 import snowflake.connector
+import concurrent.futures
 
 import requests
 import urllib
@@ -151,6 +152,7 @@ SUPP_SCHEDULE_STATUS_TABLE = "SUPPRESSION_REQUEST_SCHEDULE_STATUS"
 SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_DETAILED_STATS"
 SUPPRESSION_REQUEST_FILTERS_TABLE = "SUPPRESSION_REQUEST_FILTERS"
 SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
+SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
 
 FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 
@@ -180,6 +182,25 @@ FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppress
                                f"applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                f"applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                f"postalFields from %s where id = %s"
+
+FETCH_REQUEST_OFFERS = f"select offerId from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestId = %s and " \
+                       f"requestScheduledId = %s and runNumber = %s"
+
+MAX_OFFER_THREADS_COUNT = 2
+
+OFFER_PROCESSING_SCRIPT = f"/usr/bin/sh -x /home/zxdev/zxcustom/DATAOPS/REQUESTS/offer_consumer.sh "
+
+CHANNEL_OFFER_FILES_SF_SCHEMA = "LIST_PROCESSING_UAT"
+OFFER_SUPP_TABLES_SF_SCHEMA = "LIST_PROCESSING_UAT"
+
+CHANNEL_OFFER_FILES_DB_CONFIG = {
+    'user': 'zxdev',
+    'password': 'zxdev12#$',
+    'host': '10.100.6.181',
+    'database': 'GR_TOOL_DB',
+    'autocommit': True,
+    'allow_local_infile': True
+}
 
 POSTAL_TABLE = ""
 PROFILE_TABLE = ""

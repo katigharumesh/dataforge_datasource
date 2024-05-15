@@ -15,6 +15,7 @@ consumer_kill_condition = False
 filter_and_match_file_sources_consumer_kill_condition = False
 match_or_filter_file_sources_loaded = []
 global match_or_filter_file_sources_loaded
+
 def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
     # mysql connection closing
     global input_sources_count
@@ -262,6 +263,15 @@ def main(supp_request_id, run_number):
         #Data filter Selection
         current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
+        #Offer downloading and suppression
+        if filter_details['offerSuppression']:
+            main_logger.info("Request offers processing is initiated.")
+            mysql_cursor.execute(FETCH_REQUEST_OFFERS, (main_request_details['id'], main_request_details['ScheduleId'], main_request_details['runNumber']))
+            offers_list = mysql_cursor.fetchall()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
+                futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
+                for future in concurrent.futures.as_completed(futures):
+                    main_logger.info("Request offers processing is completed.")
 
 
         #data append

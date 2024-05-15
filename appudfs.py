@@ -788,7 +788,7 @@ def create_main_input_source(sources_loaded, main_request_details):
                               f"not matched then insert {insert_fields} values {aliased_insert_fields} ")
         sf_cursor.execute(f"drop table {main_input_source_table}")
         # alter table and add column do_suppression_status with default 'clean'  as value
-        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default 'CLEAN' , add column do_matchStatus varchar default 'NON_MATCH' ")
+        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default 'CLEAN' , do_matchStatus varchar default 'NON_MATCH' ")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
@@ -997,37 +997,154 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             sf_conn.close()
 
 
+def offer_download_and_suppression(offer_id, main_request_details, filter_details, mysql_cursor, main_request_table, current_count):
+    try:
+        request_id = main_request_details['id']
+        schedule_id = main_request_details['ScheduleId']
+        run_number = main_request_details['runNumber']
+        channel = main_request_details['channelName']
+        request_offer_log_path = f"{SUPP_LOG_PATH}/{str(request_id)}/{str(run_number)}"
+        os.makedirs(f"{request_offer_log_path}", exist_ok=True)
+        main_logger = create_logger(f"supp_request_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
+                                    log_file_path=f"{request_offer_log_path}/",
+                                    log_to_stdout=True)
+        main_logger.info(f"Processing started for offerid: {offer_id}")
+        offer_script_exe = f'{OFFER_PROCESSING_SCRIPT} "{request_id}" "{offer_id}" "{channel}" "pid" "DATAOPS" "{schedule_id}" "{run_number}">>{request_offer_log_path}/{offer_id}.log 2>>{request_offer_log_path}/{offer_id}.log'
+        exit_code = os.system(offer_script_exe)
+        if exit_code == 0:
+            main_logger.info(f"Offer downloading process got completed for offerid: {offer_id}")
+        else:
+            main_logger.info(f"Error occurred during offer downloading process for offerid: {offer_id}")
+            return -1
+        main_logger.info(f"Suppression process started for offerid: {offer_id}")
+        main_logger.info("Acquiring snowflake connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        main_logger.info("Snowflake connection acquired successfully...")
+        sf_cursor.execute(f"alter table {main_request_table} add column do_matchStatus_{offer_id} varchar default "
+                          f"'NON_MATCH', do_suppressionStatus_{offer_id} varchar default 'CLEAN' ")
+        offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+        offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
+        offer_files_db_cursor.execute(f"select group_concat(SUB_OFFER_ID) from OFFER_SUBOFFERS where CHANNEL='{channel}' and OFFER_ID={offer_id} and STATUS='A'")
+        sub_offers_list = offer_files_db_cursor.fetchone()[0]
+        if sub_offers_list != '':
+            offers_list = f'{offer_id},{sub_offers_list}'
+        else:
+            offers_list = offer_id
 
+        # Offer file match or suppression
+        def file_match_or_supp(type, tables_list, current_count):
+            counts_before_filter = current_count
+            if type == 'Match':
+                is_first_file = True
+                column_to_update = f'do_matchStatus_{offer_id}'
+            elif type == 'Suppression':
+                column_to_update = f'do_suppressionStatus_{offer_id}'
+            for table in tables_list:
+                associate_offer_id = table['OFFER_ID']
+                static_file_table = table['TABLE_NAME']
+                static_file_name = table['FILENAME']
+                download_count = table['DOWNLOAD_COUNT']
+                insert_count = table['INSERT_COUNT']
 
+                sf_update_table_query = f"update {main_request_table} a set {column_to_update} = '{static_file_table}' " \
+                                        f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where a.EMAIL_MD5 = b.md5hash"
+                if type == "Suppression":
+                    sf_update_table_query += f" AND a.do_{offer_id} != 'NON_MATCH' "
+                main_logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                if type == 'Match':
+                    if is_first_file:
+                        counts_before_filter = 0
+                        is_first_file = False
+                    counts_after_filter = counts_before_filter + sf_cursor.rowcount
+                elif type == "SUPPRESSION":
+                    counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                if offer_id == associate_offer_id:
+                    filter_type = f"MainOffer_File_{type}"
+                else:
+                    filter_type = f"SubOffer_File_{type}"
 
+                mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                     (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
+                                      f'{static_file_name}', counts_before_filter, counts_after_filter, download_count,
+                                      insert_count))
+                counts_before_filter = counts_after_filter
+            return counts_after_filter
 
+        if filter_details['applyOfferFileMatch']:
+            offer_files_db_cursor.execute(f"select B.OFFER_ID,A.TABLE_NAME,A.FILENAME,A.DOWNLOAD_COUNT,A.INSERT_COUNT from "
+                                          f"SUPPRESSION_MATCH_FILES A INNER JOIN OFFER_CHANNEL_SUPPRESSION_MATCH_FILES B ON"
+                                          f" A.ID=B.FILE_ID where B.CHANNEL='{channel}' and B.OFFER_ID in ({offers_list}) "
+                                          f"and B.PROCESS_TYPE='O' and B.STATUS='A' AND A.FILE_TYPE='M' and  A.STATUS='A'")
+            match_tables_list = offer_files_db_cursor.fetchall()
+            if len(match_tables_list) != 0:
+                current_count = file_match_or_supp('Match', match_tables_list, current_count)
+            else:
+                sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
+        else:
+            sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
 
+        if filter_details['applyOfferFileSuppression']:
+            offer_files_db_cursor.execute(f"select B.OFFER_ID,A.TABLE_NAME,A.FILENAME,A.DOWNLOAD_COUNT,A.INSERT_COUNT from"
+                                          f" SUPPRESSION_MATCH_FILES A INNER JOIN OFFER_CHANNEL_SUPPRESSION_MATCH_FILES B "
+                                          f"ON A.ID=B.FILE_ID where B.CHANNEL='{channel}' and B.OFFER_ID in ({offers_list})"
+                                          f" and B.PROCESS_TYPE='O' and B.STATUS='A' AND A.FILE_TYPE='S' and  A.STATUS='A'")
+            supp_tables_list = offer_files_db_cursor.fetchall()
+            if len(supp_tables_list) != 0:
+                current_count = file_match_or_supp('Suppression', supp_tables_list, current_count)
 
+        # Cake suppression
+        def cake_supp(filter_type, associate_offer_id, supp_table, current_count):
+            counts_before_filter = current_count
+            sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' from"
+                              f" {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash")
+            counts_after_filter = counts_before_filter - sf_cursor.rowcount
+            mysql_cursor.execute(f"update {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} set filterType='{filter_type}',"
+                                 f"filterName='{associate_offer_id}',countsBeforeFilter={counts_before_filter}"
+                                 f",countsAfterFilter={counts_after_filter} where requestId={request_id} and "
+                                 f"offerId={offer_id} and associateOfferId={associate_offer_id} and "
+                                 f"filterType='TEMPORARY' and runNumber = {run_number}")
+            return counts_after_filter
 
+        current_count = cake_supp("MainOffer_Cake_Suppression", offer_id, f"{channel}_OFFER_MD5_{offer_id}", current_count)
 
+        #Conversions suppression
 
+        if str(channel).upper() != 'INFS':
+            def conversions_supp(filter_type, associate_offer_id, current_count):
+                counts_before_filter = current_count
+                sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' "
+                                  f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where "
+                                  f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') "
+                                  f"b where a.profile_id=b.profileid")
+                counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                     (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
+                                      f'{associate_offer_id}', counts_before_filter, counts_after_filter, '',''))
+                return counts_after_filter
 
+            current_count = conversions_supp("MainOffer_Cake_Converters", offer_id, current_count)
 
+        #Sub offers suppression
 
+        if sub_offers_list != '':
+            for sub_offer_id in ','.split(sub_offers_list):
+                current_count = cake_supp("SubOffer_Cake_Suppression",sub_offer_id, f"{channel}_OFFER_MD5_{sub_offer_id}", current_count)
+                if str(channel).upper() != 'INFS':
+                    current_count = conversions_supp("SubOffer_Cake_Converters", sub_offer_id, current_count)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        main_logger.info(f"Suppression process ended for offerid: {offer_id}")
+    except Exception as e:
+        main_logger.info(f"Exception occurred: At offer_download_and_suppression for requestid: {request_id}, "
+                         f"runNumber: {run_number}, offerid: {offer_id}. Please look into this. {str(e)}" + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and offer_files_db_conn.is_connected():
+            offer_files_db_cursor.close()
+            offer_files_db_conn.close()
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 
 # adding code for suppression methods
