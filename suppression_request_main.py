@@ -120,19 +120,34 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     if type_of_request == "SUPPRESS_MATCH":
         key_to_fetch = 'matchedSourceDetails'
         channel_level_filter = filter_details['applyChannelFileMatch']
+        channel_file_type = 'M'
+        channel_filter_name = 'Channel_File_Match'
     if type_of_request == "SUPPRESS_FILTER":
         key_to_fetch = 'filterDataSources'
         channel_level_filter = filter_details['applyChannelFileSuppression']
+        channel_file_type = 'S'
+        channel_filter_name = 'Channel_File_Suppression'
     match_or_filter_source_details = json.loads(filter_details[key_to_fetch])
     sorted_match_or_filter_sources_loaded = []
     if len(match_or_filter_source_details) == 0 and channel_level_filter == 0:
         main_logger.info(f"No {type_of_request} sources are chosen and channel level files filter is also not selected. Returning to main")
         update_default_values(type_of_request, main_request_table, main_logger)
         return current_count
-    elif len(match_or_filter_source_details) == 0 and channel_level_filter == 1:
-        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter")
+    if channel_level_filter:
+        channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+        channel_files_db_cursor = channel_files_db_conn.cursor(dictionary=True)
+        channel_files_db_cursor.execute(f"select TABLE_NAME,concat(FILENAME,DOWNLOAD_COUNT,INSERT_COUNT),'{channel_filter_name}' from"
+                                        f" SUPPRESSION_MATCH_FILES where FILE_TYPE='{channel_file_type}' and  STATUS='A' and ID in "
+                                        f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where "
+                                        f"CHANNEL='{main_request_table['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
+        sorted_match_or_filter_sources_loaded += channel_files_db_cursor.fetchall()
+    if len(match_or_filter_source_details) == 0 and channel_level_filter == 1:
+        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter"
 
-
+        current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table,
+                                                sorted_match_or_filter_sources_loaded, mysql_cursor, main_logger,
+                                                current_count)
+        return current_count
     match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
     match_or_filter_file_source_queue = queue.Queue()
     match_or_filter_queue_empty_condition = threading.Condition()

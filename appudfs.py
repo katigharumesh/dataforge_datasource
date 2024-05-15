@@ -961,6 +961,8 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}"
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
+            elif filter_source[2] == 'Channel_File_Match' or filter_source[2] == 'Channel_File_Suppression':
+                pass
             else:
                 match_fields = filter_source[1].split(",")
                 source_table = filter_source[0]
@@ -1121,7 +1123,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                      (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
-                                      f'{associate_offer_id}', counts_before_filter, counts_after_filter, '',''))
+                                      f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0))
                 return counts_after_filter
 
             current_count = conversions_supp("MainOffer_Cake_Converters", offer_id, current_count)
