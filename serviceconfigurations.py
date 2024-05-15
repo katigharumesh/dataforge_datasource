@@ -211,42 +211,44 @@ FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password
 
 # SUPPRESSIONS tables
 
-GREEN_GLOBAL_SUPP_TABLES = ("GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
+GREEN_GLOBAL_SUPP_TABLES = (
+                            "GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
                             "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
                             "GREEN_LPT.PFM_UNIVERSE_UNSUBS",
                             "GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE",
                             "GREEN_LPT.GREEN_UNSUBS",
-                            "APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-                            "APT_CUSTOM_GLOBAL_SOFTINACTIVE")
+                            "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+                            "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+                            )
 GREEN_FEED_LEVEL_SUPP_TABLES = {
     'email': (
         "INFS_LPT.GLOBAL_COMPLAINER_EMAILS",
         "INFS_LPT.ABUSE_DETAILS",
-        "PFM_FLUENT_REGISTRATIONS_CANADA",
-        "APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-        "APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+        "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
     ),
     'email_listid': (
-        "select email,listid from UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) "
+        "select email,listid from GREEN_LPT.UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) ",
     )
 }
 
 INFS_FEED_LEVEL_SUPP_TABLES = {
     'email': (
-        "infs_softs",
-        "infs_hards",
-        "APT_ADHOC_GLOBAL_SUPP_20210204",
-        "abuse_details",
-        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA"
+        "INFS_LPT.infs_softs",
+        "INFS_LPT.infs_hards",
+        "INFS_LPT.APT_ADHOC_GLOBAL_SUPP_20210204",
+        "INFS_LPT.abuse_details",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
         "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
     ),
     'email_listid': (
-        "unsub_details_oteam",
-        "select email,listid from EMAIL_REPLIES_TRANSACTIONAL a join GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326",
-        "select email,listid from INFS_UNSUBS_ACCOUNT_WISE a join (select distinct listid,account_name from GM_SUBID_DOMAIN_DETAILS) b on a.account_name=b.account_name",
-        "infs_account_level_static_suppression_data"
+        "INFS_LPT.unsub_details_oteam",
+        "select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326",
+        "select email,listid from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE a join (select distinct listid,account_name from INFS_LPT.GM_SUBID_DOMAIN_DETAILS) b on a.account_name=b.account_name",
+        "INFS_LPT.infs_account_level_static_suppression_data"
     ),
     'listid_profileid': (
-        "APT_CUSTOM_CONVERSIONS_DATA_OTEAM"
+        "INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM",
     )
 }

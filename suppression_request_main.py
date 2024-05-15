@@ -142,7 +142,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                                         f"CHANNEL='{main_request_table['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
         sorted_match_or_filter_sources_loaded += channel_files_db_cursor.fetchall()
     if len(match_or_filter_source_details) == 0 and channel_level_filter == 1:
-        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter"
+        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter")
 
         current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table,
                                                 sorted_match_or_filter_sources_loaded, mysql_cursor, main_logger,
