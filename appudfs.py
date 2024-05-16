@@ -61,7 +61,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 consumer_logger.info("Snowflake account mismatch. Pending implementation ...")
                 raise Exception("Snowflake account mismatch. Pending implementation ...")
             if source_sub_type in ('R', 'D', 'P', 'M', 'J'):
-                if sf_table is not None:
+                if sf_table is not None or sf_table!='NULL':
                     sf_data_source = f"{sf_database}.{sf_schema}.{sf_table}"
                 else:
                     sf_data_source = "(" + sf_query + ")"
@@ -727,9 +727,9 @@ def create_main_input_source(sources_loaded, main_request_details):
         for source in sources_loaded:
             input_source_mapping_table_name = source[0]
             input_source_mapping_id = source[1]
-            if SUPP_SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
+            if SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
                 generalized_sources.append(
-                    f"(select *,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
+                    f"(select {main_request_details['FilterMatchFields']},'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
             else:
                 generalized_sources.append(input_source_mapping_table_name)
 
@@ -741,7 +741,8 @@ def create_main_input_source(sources_loaded, main_request_details):
         if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_input_source_table} set email_id=lower(trim(email_id))")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
-                sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar as md5(email_id)")
+                sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar")
+                sf_cursor.execute(f"update {temp_input_source_table} set email_md5 = md5(email_id)")
         sf_cursor.execute(f"drop table if exists {main_input_source_table}")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
@@ -753,10 +754,12 @@ def create_main_input_source(sources_loaded, main_request_details):
         counts_before_filter = counts_after_filter
         if feed_type != 'A':
             if feed_type == 'F':
-                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select listid from {FP_LISTIDS_SF_TABLE})")
+                sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select listid from {FP_LISTIDS_SF_TABLE})")
+                supp_count = sf_cursor.rowcount
                 filter_name = 'Third Party listids suppression'
             elif feed_type == 'T':
-                supp_count = sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select listid from {FP_LISTIDS_SF_TABLE})")
+                sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select listid from {FP_LISTIDS_SF_TABLE})")
+                supp_count = sf_cursor.rowcount
                 filter_name = 'First Party listids suppression'
             else:
                 raise Exception("Unknown feed_type has been configured. Please look into this...")
@@ -788,9 +791,10 @@ def create_main_input_source(sources_loaded, main_request_details):
             filter_name = 'Across files duplicates suppression'
         for source in sources_loaded:
             input_source_mapping_id = source[1]
+            print(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}  where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
             sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
                               f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when "
-                              f"not matched then insert {insert_fields} values {aliased_insert_fields} ")
+                              f"not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
         sf_cursor.execute(f"drop table {main_input_source_table}")
         # alter table and add column do_suppression_status with default 'clean'  as value
         sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default 'CLEAN' , do_matchStatus varchar default 'NON_MATCH' ")
