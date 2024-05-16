@@ -41,7 +41,7 @@ import boto3
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
 SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
 LOG_PATH = SCRIPT_PATH + "app_logs"
-FILE_PATH = SCRIPT_PATH + "r_logs"  # local file path - mount to download the temp files
+FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/" + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -140,7 +140,7 @@ LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SC
 SUPP_SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/"
 #SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
 SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
-SUPP_FILE_PATH = SUPP_SCRIPT_PATH + "supp_r_logs"  # local file path - mount to download the temp files
+SUPP_FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/SUPPRESSION_REQUEST/r_logs"  # local file path - mount to download the temp files
 SUPP_PID_FILE = SUPP_SCRIPT_PATH + "/supp_REQUEST_ID.pid"
 
 SUPP_SOURCE_TABLE_PREFIX = "SUPPRESSION_INPUT_SOURCE_"
