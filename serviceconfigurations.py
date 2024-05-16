@@ -178,11 +178,11 @@ INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETA
                                           f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount )" \
                                           f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 
-FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppressionMethod,offerSuppression," \
-                               f"purdueSuppression,stateSuppression,zipSuppression,filterDataSources," \
-                               f"applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
-                               f"applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
-                               f"postalFields from %s where id = %s"
+FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressionMethod,offerSuppression," \
+                               "purdueSuppression,stateSuppression,zipSuppression,filterDataSources," \
+                               "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
+                               "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
+                               "postalFields from {} where id = {}"
 
 FETCH_REQUEST_OFFERS = f"select offerId from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestId = %s and " \
                        f"requestScheduledId = %s and runNumber = %s"

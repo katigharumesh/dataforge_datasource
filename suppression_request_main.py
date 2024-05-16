@@ -118,7 +118,7 @@ def filter_and_match_file_sources_consumer(type_of_request, file_source_queue, q
 
 def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count):
     if type_of_request == "SUPPRESS_MATCH":
-        key_to_fetch = 'matchedSourceDetails'
+        key_to_fetch = 'matchedDataSources'
         channel_level_filter = filter_details['applyChannelFileMatch']
         channel_file_type = 'M'
         channel_filter_name = 'Channel_File_Match'
@@ -262,8 +262,10 @@ def main(supp_request_id, run_number):
         else:
             filter_table = SUPPRESSION_PRESET_FILTERS_TABLE
         # Fetching request filter details
-        mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS,(filter_table,main_request_details['filterId']))
+        main_logger.info(f"Fetching filter details, by executing : {FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId'])}")
+        mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId']))
         filter_details = mysql_cursor.fetchone()
+        main_logger.info(f"Filter details : {str(filter_details)}")
         # Performing isps filtration
         current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
