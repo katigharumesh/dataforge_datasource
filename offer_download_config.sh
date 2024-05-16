@@ -13,7 +13,7 @@ fi
 request_path=$homepath/rlogs/$request_id/$run_number/
 request_offer_log_path=$homepath/logs/$request_id/$run_number/
 
-lpt_path=/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/
+lpt_path=/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/
 python_path=/usr/local/bin/python3
 python_packages_path=/usr/local/bin/python3
 export PYTHONPATH=$python_packages_path

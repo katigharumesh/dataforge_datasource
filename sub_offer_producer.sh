@@ -10,7 +10,7 @@ run_number=$8
 
 echo "Request_id : $request_id , Main-Offer : $offer_id : Sub-Offer_Producer start time: $(date)"
 
-source /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/offer_download_config.sh $LPT $channel $request_id $run_number
+source /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_download_config.sh $LPT $channel $request_id $run_number
 
 set +euo pipefail
 
