@@ -951,6 +951,8 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         sf_cursor = sf_conn.cursor()
         logger.info("Snowflake connection acquired successfully...")
         for filter_source in sorted_filter_sources_loaded:
+            download_count = 0
+            insert_count = 0
             if filter_source[2] == 'ByField':
                 filter = filter_source[1]
                 if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
@@ -971,7 +973,13 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
             elif filter_source[2] == 'Channel_File_Match' or filter_source[2] == 'Channel_File_Suppression':
-                pass
+                source_table = filter_source[0]
+                filter_name = str(filter_source[1]).split(',')[0]
+                download_count = str(filter_source[1]).split(',')[1]
+                insert_count = str(filter_source[1]).split(',')[2]
+                filter_type = filter_source[2]
+                sf_update_table_query = f"UPDATE {main_request_table} a set a.{column_to_update} = '{filter_name}'" \
+                                        f" from {source_table} b where a.EMAIL_MD5=b.md5hash "
             else:
                 match_fields = filter_source[1].split(",")
                 source_table = filter_source[0]
@@ -981,7 +989,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
             if type_of_request == "SUPPRESS_FILTER":
                 sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
-            logger.info(f"Executing query:  {sf_update_table_query}")
+            logger.info(f"Executing query: {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
             if type_of_request == "SUPPRESS_MATCH":
                 if is_first_match_filter:
@@ -995,7 +1003,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
                                   main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
-                                  counts_before_filter, counts_after_filter, 0, 0))
+                                  counts_before_filter, counts_after_filter, download_count, insert_count))
             counts_before_filter = counts_after_filter
             logger.info(f"perform_filter_or_match method for {type_of_request} executed successfully...")
         return counts_after_filter

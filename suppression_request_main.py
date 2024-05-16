@@ -131,7 +131,8 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     sorted_match_or_filter_sources_loaded = []
     if len(match_or_filter_source_details) == 0 and channel_level_filter == 0:
         main_logger.info(f"No {type_of_request} sources are chosen and channel level files filter is also not selected. Returning to main")
-        update_default_values(type_of_request, main_request_table, main_logger)
+        if type_of_request == "SUPPRESS_MATCH":
+            update_default_values(type_of_request, main_request_table, main_logger)
         return current_count
     if channel_level_filter:
         channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
@@ -141,56 +142,50 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                                         f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where "
                                         f"CHANNEL='{main_request_table['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
         sorted_match_or_filter_sources_loaded += channel_files_db_cursor.fetchall()
-    if len(match_or_filter_source_details) == 0 and channel_level_filter == 1:
-        main_logger.info(f"No {type_of_request} sources are chosen. Performing channel level files filter")
+    if len(match_or_filter_source_details) != 0:
+        match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
+        match_or_filter_file_source_queue = queue.Queue()
+        match_or_filter_queue_empty_condition = threading.Condition()
+        producer_thread = threading.Thread(target=filter_and_match_file_sources_producer, args=(type_of_request, match_or_filter_file_source_queue, match_or_filter_file_source_details, match_or_filter_queue_empty_condition, THREAD_COUNT, main_logger))
+        producer_thread.start()
+        consumer_threads = []
+        for i in range(THREAD_COUNT):
+            # consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
+            consumer_thread = threading.Thread(target=filter_and_match_file_sources_consumer, args=(
+                type_of_request, match_or_filter_file_source_queue, match_or_filter_queue_empty_condition, main_logger, main_request_details))
+            consumer_thread.start()
+            time.sleep(10)
+            consumer_threads.append(consumer_thread)
+        # Wait for producer thread to finish
+        producer_thread.join()
 
-        current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table,
-                                                sorted_match_or_filter_sources_loaded, mysql_cursor, main_logger,
-                                                current_count)
-        return current_count
-    match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
-    match_or_filter_file_source_queue = queue.Queue()
-    match_or_filter_queue_empty_condition = threading.Condition()
-    producer_thread = threading.Thread(target=filter_and_match_file_sources_producer, args=(type_of_request, match_or_filter_file_source_queue, match_or_filter_file_source_details, match_or_filter_queue_empty_condition, THREAD_COUNT, main_logger))
-    producer_thread.start()
-    consumer_threads = []
-    for i in range(THREAD_COUNT):
-        # consumer_logger = create_logger(f"consumer_logger_{i}", log_to_stdout=True)
-        consumer_thread = threading.Thread(target=filter_and_match_file_sources_consumer, args=(
-            type_of_request, match_or_filter_file_source_queue, match_or_filter_queue_empty_condition, main_logger, main_request_details))
-        consumer_thread.start()
-        time.sleep(10)
-        consumer_threads.append(consumer_thread)
-    # Wait for producer thread to finish
-    producer_thread.join()
-
-    # Wait for consumer threads to finish
-    for consumer_thread in consumer_threads:
-        consumer_thread.join()
-    print("match_or_filter_file_sources_loaded : " + str(match_or_filter_file_sources_loaded))
-    if len(match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
+        # Wait for consumer threads to finish
+        for consumer_thread in consumer_threads:
+            consumer_thread.join()
+        print("match_or_filter_file_sources_loaded : " + str(match_or_filter_file_sources_loaded))
+        if len(match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
+            main_logger.info(
+                f"Only {len(match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+            print(
+                f"Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+            mysql_cursor.execute(DELETE_FILE_DETAILS,
+                                 (main_request_details['ScheduleId'], main_request_details['runNumber']))
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
+                                                          f'Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
+            update_next_schedule_due(supp_request_id, run_number, main_logger)
+            os.remove(pid_file)
+            return
         main_logger.info(
-            f"Only {len(match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
-        print(
-            f"Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
-        mysql_cursor.execute(DELETE_FILE_DETAILS,
-                             (main_request_details['ScheduleId'], main_request_details['runNumber']))
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
-                                                      f'Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
-        update_next_schedule_due(supp_request_id, run_number, main_logger)
-        os.remove(pid_file)
-        return
-    main_logger.info(
-        f" Match file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
-    sorted_match_or_filter_sources_loaded += [tuple(t[1], t[2], 'FileSource') for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
-    data_source_filter_list = list(match_or_filter_source_details['DataSource'])
-    for i in data_source_filter_list:
-        data_source_details_dict = json.loads(i)
-        data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
-        match_columns = data_source_details_dict['columns']
-        sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, match_columns, 'DataSource'))
-    for filter in list(match_or_filter_source_details['ByField']):
-        sorted_match_or_filter_sources_loaded.append(tuple('', filter, 'ByField'))
+            f" Match file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
+        sorted_match_or_filter_sources_loaded += [tuple(t[1], t[2], 'FileSource') for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
+        data_source_filter_list = list(match_or_filter_source_details['DataSource'])
+        for i in data_source_filter_list:
+            data_source_details_dict = json.loads(i)
+            data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
+            columns = data_source_details_dict['columns']
+            sorted_match_or_filter_sources_loaded.append(tuple(data_source_table_name, columns, 'DataSource'))
+        for filter in list(match_or_filter_source_details['ByField']):
+            sorted_match_or_filter_sources_loaded.append(tuple('', filter, 'ByField'))
     current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_match_or_filter_sources_loaded, mysql_cursor, main_logger, current_count)
 
     main_logger.info(f"All {type_of_request} sources are successfully processed.")
