@@ -6,15 +6,14 @@ request_id=$3
 run_number=$4
 
 if [ "$LPT" == "DATAOPS" ]; then
-    homepath=/home/zxdev/zxcustom/DATAOPS/REQUESTS/
-    mnt_path=/home/zxdev/zxcustom/DATAOPS/REQUESTS/supp_r_logs/$request_id/
+    homepath=/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/
     app_db_name=CAMPAIGN_TOOL_QA
 fi
 
 request_path=$homepath/rlogs/$request_id/$run_number/
 request_offer_log_path=$homepath/logs/$request_id/$run_number/
 
-lpt_path=/home/zxdev/zxcustom/DATAOPS/REQUESTS/
+lpt_path=/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/
 python_path=/usr/local/bin/python3
 python_packages_path=/usr/local/bin/python3
 export PYTHONPATH=$python_packages_path

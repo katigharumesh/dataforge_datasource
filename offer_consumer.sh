@@ -6,7 +6,7 @@ LPT=$5
 schedule_id=$6
 run_number=$7
 
-source /home/zxdev/zxcustom/DATAOPS/REQUESTS/offer_download_config.sh $LPT $channel $request_id $run_number
+source /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/offer_download_config.sh $LPT $channel $request_id $run_number
 
 set +euo pipefail
 
@@ -47,6 +47,7 @@ else
     if [ "$is_sub_offer" == "NULL" ]; then
         $mysql_path -u$db_user -p$db_pass -h$db_host -D$app_db_name -A -ss -e "insert into $SUPPRESSION_MATCH_DETAILED_STATS_TABLE(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId,downloadCount,insertCount) values ($request_id,$schedule_id,$run_number,$offer_id,'TEMPORARY',$offer_id,$offer_download_count,$offer_insert_count)"
     fi
+    exit -1
 fi
 
 #touch $pid
