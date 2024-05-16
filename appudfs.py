@@ -1,4 +1,3 @@
-import snowflake.connector.config_manager
 
 from serviceconfigurations import *
 from basicudfs import *
@@ -7,8 +6,14 @@ def load_input_source(type_of_request, source, main_request_details):
     try:
         if type_of_request == "SUPPRESSION_REQUEST":
             request_id = source['requestId']
+            log_path = SUPP_LOG_PATH
+            file_path = SUPP_FILE_PATH
+            source_table_prefix = SUPP_SOURCE_TABLE_PREFIX
         elif type_of_request == "SUPPRESSION_DATASET":
             request_id = source['dataSourceId']
+            log_path = LOG_PATH
+            file_path = FILE_PATH
+            source_table_prefix = SOURCE_TABLE_PREFIX
         mapping_id = source['id']
         data_source_id = source['dataSourceId']
         source_id = source['sourceId']
@@ -28,28 +33,28 @@ def load_input_source(type_of_request, source, main_request_details):
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
         input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
-        consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+        consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{log_path}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
         consumer_logger.info(f"Processing task: {str(source)}")
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
-        if source_id == "0" and data_source_id != "" :
-            return tuple(data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger),mapping_id)
+        if source_id == "0" and data_source_id != "":
+            return tuple([data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger), mapping_id])
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection established Successfully....")
 
-        source_table = SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(mapping_id) + '_' + str(run_number)
+        source_table = source_table_prefix + str(request_id) + '_' + str(mapping_id) + '_' + str(run_number)
         if source_type == "F":
-            temp_files_path = f"{FILE_PATH}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
+            temp_files_path = f"{file_path}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
             os.makedirs(temp_files_path,exist_ok=True)
             source_table = process_file_type_request(request_id, source_table, run_number,
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             port, username, password)
-            return tuple(source_table,mapping_id)
+            return tuple([source_table, mapping_id])
 
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
@@ -110,7 +115,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 mysql_cursor.execute(INSERT_FILE_DETAILS, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
                     'DF_DATASET SERVICE', 'DF_DATASET SERVICE', 'NA', 'NA','C',''))
-                return tuple(source_table,mapping_id)
+                return tuple([source_table, mapping_id])
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
                 raise Exception("Unknown source_sub_type selected")
@@ -722,9 +727,9 @@ def create_main_input_source(sources_loaded, main_request_details):
         for source in sources_loaded:
             input_source_mapping_table_name = source[0]
             input_source_mapping_id = source[1]
-            if SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
+            if SUPP_SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
                 generalized_sources.append(
-                    f"(select *,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name})")
+                    f"(select *,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
             else:
                 generalized_sources.append(input_source_mapping_table_name)
 
@@ -743,8 +748,8 @@ def create_main_input_source(sources_loaded, main_request_details):
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA'
-                                                                      ,'INITIAL COUNT',0,counts_after_filter,0,0))
+        print(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
         if feed_type != 'A':
             if feed_type == 'F':
@@ -1430,3 +1435,4 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+

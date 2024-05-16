@@ -137,12 +137,13 @@ LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SC
 
 '''' SUPPRESSION REQUEST CONFIGS '''
 
-# SUPP_SCRIPT_PATH = r"/u3/zx_tenant/ganesh/dataforge_datasource/"
-SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
+SUPP_SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/"
+#SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
 SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
 SUPP_FILE_PATH = SUPP_SCRIPT_PATH + "supp_r_logs"  # local file path - mount to download the temp files
 SUPP_PID_FILE = SUPP_SCRIPT_PATH + "/supp_REQUEST_ID.pid"
 
+SUPP_SOURCE_TABLE_PREFIX = "SUPPRESSION_INPUT_SOURCE_"
 MAIN_INPUT_SOURCE_TABLE_PREFIX = "SUPPRESSION_REQUEST_MAIN_INPUT_"
 
 SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
@@ -160,7 +161,7 @@ UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requ
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
-                             f'a.FilterMatchFields,b.requestScheduleId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
@@ -174,7 +175,7 @@ SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQU
 
 INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} " \
                                           f"(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId" \
-                                          f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount" \
+                                          f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount )" \
                                           f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 
 FETCH_REQUEST_FILTER_DETAILS = f"select id,name,isps,matchedDataSources,suppressionMethod,offerSuppression," \
