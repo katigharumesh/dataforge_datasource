@@ -15,6 +15,11 @@ consumer_kill_condition = False
 filter_and_match_file_sources_consumer_kill_condition = False
 global match_or_filter_file_sources_loaded
 match_or_filter_file_sources_loaded = []
+global match_sources_loaded
+match_sources_loaded = []
+global filter_sources_loaded
+filter_sources_loaded = []
+
 def load_input_sources_producer(sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
     # mysql connection closing
     global input_sources_count
@@ -78,7 +83,7 @@ def filter_and_match_file_sources_producer(type_of_request, file_source_queue, f
     print("filter_and_match_file_sources_producer finished producing tasks")
     with match_or_filter_queue_empty_condition:
         for _ in range(thread_count):  # Put sentinel value for each consumer
-            file_source_queue.put(None)  # Put sentinel value in the queue
+            file_source_queue.put(tuple([len(file_source_details), None]))  # Put sentinel value in the queue
         match_or_filter_queue_empty_condition.notify_all()  # Notify all consumer threads
     main_logger.info(f"filter_and_match_file_sources_producer Execution Ended: {time.ctime()} ")
 
@@ -87,6 +92,10 @@ def filter_and_match_file_sources_producer(type_of_request, file_source_queue, f
 def filter_and_match_file_sources_consumer(type_of_request, file_source_queue, match_or_filter_queue_empty_condition, main_logger, main_request_details):
     try:
         main_logger.info(f"Processing consumers for {type_of_request}")
+        if type_of_request == "SUPPRESS_MATCH":
+            match_or_filter_file_sources_loaded = match_sources_loaded
+        if type_of_request == "SUPPRESS_FILTER":
+            match_or_filter_file_sources_loaded = filter_sources_loaded
         global filter_and_match_file_sources_consumer_kill_condition
         main_logger.info(f"Consumer execution started: {time.ctime()}")
         while True:
@@ -115,18 +124,23 @@ def filter_and_match_file_sources_consumer(type_of_request, file_source_queue, m
         main_logger.error(f"Exception occurred: {str(e)}")
         filter_and_match_file_sources_consumer_kill_condition = True
 
+
+
 def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count):
     if type_of_request == "SUPPRESS_MATCH":
         key_to_fetch = 'matchedDataSources'
         channel_level_filter = filter_details['applyChannelFileMatch']
         channel_file_type = 'M'
         channel_filter_name = 'Channel_File_Match'
+        match_or_filter_file_sources_loaded = match_sources_loaded
     if type_of_request == "SUPPRESS_FILTER":
         key_to_fetch = 'filterDataSources'
         channel_level_filter = filter_details['applyChannelFileSuppression']
         channel_file_type = 'S'
         channel_filter_name = 'Channel_File_Suppression'
+        match_or_filter_file_sources_loaded = filter_sources_loaded
     match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+    #match_or_filter_file_sources_loaded =[]
     sorted_match_or_filter_sources_loaded = []
     if len(match_or_filter_source_details) == 0 and channel_level_filter == 0:
         main_logger.info(f"No {type_of_request} sources are chosen and channel level files filter is also not selected. Returning to main")
@@ -164,9 +178,9 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
         print("match_or_filter_file_sources_loaded : " + str(match_or_filter_file_sources_loaded))
         if len(match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
             main_logger.info(
-                f"Only {len(match_or_filter_file_sources_loaded)} {type_of_request} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+                f"Only {len(match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
             print(
-                f"Only {len(match_or_filter_file_sources_loaded)} {type_of_request} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+                f"Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
             mysql_cursor.execute(DELETE_FILE_DETAILS,
                                  (main_request_details['ScheduleId'], main_request_details['runNumber']))
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
@@ -175,7 +189,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
             os.remove(pid_file)
             return
         main_logger.info(
-            f" Match/Filter file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
+            f" {type_of_request} file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
         sorted_match_or_filter_sources_loaded += [tuple([t[1], t[2], 'FileSource']) for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
         if 'DataSource' in match_or_filter_source_details.keys():
             data_source_filter_list = list(match_or_filter_source_details['DataSource'])
@@ -282,7 +296,7 @@ def main(supp_request_id, run_number):
             mysql_cursor.execute(FETCH_REQUEST_OFFERS, (main_request_details['id'], main_request_details['ScheduleId'], main_request_details['runNumber']))
             offers_list = mysql_cursor.fetchall()
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
-                futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
+                futures = [executor.submit(offer_download_and_suppression, offer['offerId'], main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
                 for future in concurrent.futures.as_completed(futures):
                     main_logger.info("Request offers processing is completed.")
 
