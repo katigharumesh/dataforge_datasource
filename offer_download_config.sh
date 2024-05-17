@@ -7,7 +7,10 @@ run_number=$4
 
 if [ "$LPT" == "DATAOPS" ]; then
     homepath=/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/
+    app_db_host=10.100.6.181
     app_db_name=CAMPAIGN_TOOL_QA
+    app_db_user=pmtauser
+    app_db_pass='pmta12#$'
 fi
 
 request_path=$homepath/rlogs/$request_id/$run_number/

@@ -1450,3 +1450,35 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             sf_cursor.close()
             sf_conn.close()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor, current_count, ):
+    request_id = main_request_details['id']
+    schedule_id = main_request_details['ScheduleId']
+    run_number = main_request_details['runNumber']
+    channel = main_request_details['channelName']
+    suppression_method = filter_details['suppressionMethod']
+    result_breakdown_flag = ''
+    counts_before_filter = current_count
+    if channel == 'GREEN':
+        if suppression_method == 'F':
+            status, result = apply_green_feed_level_suppression(source_table, result_breakdown_flag, logger)
+        elif suppression_method == 'G':
+            status, result = apply_green_global_suppression(source_table, result_breakdown_flag, logger)
+    elif channel == 'INFS':
+        status, result = apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logger)
+

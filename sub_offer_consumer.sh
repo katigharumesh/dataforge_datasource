@@ -31,7 +31,7 @@ else
     echo $offer_id >>$main_offer_path/success_offers
     offer_download_count=$(echo $offer_download_status | cut -d'|' -f3)
     offer_insert_count=$(echo $offer_download_status | cut -d'|' -f2)
-    $mysql_path -u$db_user -p$db_pass -h$db_host -D$app_db_name -A -ss -e "insert into $SUPPRESSION_MATCH_DETAILED_STATS_TABLE(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId,downloadCount,insertCount) values ($request_id,$schedule_id,$run_number,$offer_id,'TEMPORARY',$sub_offer_id,$offer_download_count,$offer_insert_count)"
+    $mysql_path -u$app_db_user -p$app_db_pass -h$app_db_host -D$app_db_name -A -ss -e "insert into $SUPPRESSION_MATCH_DETAILED_STATS_TABLE(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId,downloadCount,insertCount) values ($request_id,$schedule_id,$run_number,$offer_id,'TEMPORARY',$sub_offer_id,$offer_download_count,$offer_insert_count)"
 
 fi
 
