@@ -284,19 +284,35 @@ def main(supp_request_id, run_number):
         # Performing isps filtration
         current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
+        # Performing channel suppression
+        current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger, mysql_cursor )
+
         # Data Match Selection
         current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
         #Data filter Selection
         current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
+        # Performing ZIPs suppression
+        if filter_details['zipSuppression']:
+            current_count = state_and_zip_suppression('ZIP_SUPPRESSION', current_count, main_request_table,
+                                                      filter_details['zipSuppression'], main_logger, mysql_cursor, main_request_details)
+
+        # Performing States suppression
+        if filter_details['stateSuppression']:
+            current_count = state_and_zip_suppression('STATE_SUPPRESSION', current_count, main_request_table,
+                                                      filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
+
+        # Performing Purdue suppression
+
+
+
         #Offer downloading and suppression
-        if filter_details['offerSuppression']:
+        if filter_details['offerSuppression'] is not None:
             main_logger.info("Request offers processing is initiated.")
-            mysql_cursor.execute(FETCH_REQUEST_OFFERS, (main_request_details['id'], main_request_details['ScheduleId'], main_request_details['runNumber']))
-            offers_list = mysql_cursor.fetchall()
+            offers_list = str(filter_details['offerSuppression']).split(',')
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
-                futures = [executor.submit(offer_download_and_suppression, offer['offerId'], main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
+                futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
                 for future in concurrent.futures.as_completed(futures):
                     main_logger.info("Request offers processing is completed.")
 

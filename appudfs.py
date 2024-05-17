@@ -1026,29 +1026,31 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         channel = main_request_details['channelName']
         request_offer_log_path = f"{SUPP_LOG_PATH}/{str(request_id)}/{str(run_number)}"
         os.makedirs(f"{request_offer_log_path}", exist_ok=True)
-        main_logger = create_logger(f"supp_request_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
+        offer_logger = create_logger(f"supp_request_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
                                     log_file_path=f"{request_offer_log_path}/",
                                     log_to_stdout=True)
-        main_logger.info(f"Processing started for offerid: {offer_id}")
+        offer_logger.info(f"Processing started for offerid: {offer_id}")
+        offer_logger.info(f"Inserting offer: {offer_id} into {SUPPRESSION_REQUEST_OFFERS_TABLE} Table. ")
+        mysql_cursor.execute(INSERT_REQUEST_OFFERS,(request_id, schedule_id, run_number, offer_id))
         offer_script_exe = f'{OFFER_PROCESSING_SCRIPT} "{request_id}" "{offer_id}" "{channel}" "pid" "DATAOPS" "{schedule_id}" "{run_number}">>{request_offer_log_path}/{offer_id}.log 2>>{request_offer_log_path}/{offer_id}.log'
         exit_code = os.system(offer_script_exe)
         if exit_code == 0:
-            main_logger.info(f"Offer downloading process got completed for offerid: {offer_id}")
+            offer_logger.info(f"Offer downloading process got completed for offerid: {offer_id}")
         else:
-            main_logger.info(f"Error occurred during offer downloading process for offerid: {offer_id}")
+            offer_logger.info(f"Error occurred during offer downloading process for offerid: {offer_id}")
             return -1
-        main_logger.info(f"Suppression process started for offerid: {offer_id}")
-        main_logger.info("Acquiring snowflake connection")
+        offer_logger.info(f"Suppression process started for offerid: {offer_id}")
+        offer_logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        main_logger.info("Snowflake connection acquired successfully...")
+        offer_logger.info("Snowflake connection acquired successfully...")
         sf_cursor.execute(f"alter table {main_request_table} add column do_matchStatus_{offer_id} varchar default "
                           f"'NON_MATCH', do_suppressionStatus_{offer_id} varchar default 'CLEAN' ")
         offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
         offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
-        offer_files_db_cursor.execute(f"select group_concat(SUB_OFFER_ID) from OFFER_SUBOFFERS where CHANNEL='{channel}' and OFFER_ID={offer_id} and STATUS='A'")
-        sub_offers_list = offer_files_db_cursor.fetchone()[0]
-        if sub_offers_list != '':
+        offer_files_db_cursor.execute(f"select group_concat(SUB_OFFER_ID) as sub_offers_list from OFFER_SUBOFFERS where CHANNEL='{channel}' and OFFER_ID={offer_id} and STATUS='A'")
+        sub_offers_list = offer_files_db_cursor.fetchone()['sub_offers_list']
+        if sub_offers_list is not None:
             offers_list = f'{offer_id},{sub_offers_list}'
         else:
             offers_list = offer_id
@@ -1072,7 +1074,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                         f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where a.EMAIL_MD5 = b.md5hash"
                 if type == "Suppression":
                     sf_update_table_query += f" AND a.do_{offer_id} != 'NON_MATCH' "
-                main_logger.info(f"Executing query:  {sf_update_table_query}")
+                offer_logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 if type == 'Match':
                     if is_first_file:
@@ -1149,15 +1151,15 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
 
         #Sub offers suppression
 
-        if sub_offers_list != '':
+        if sub_offers_list is not None:
             for sub_offer_id in ','.split(sub_offers_list):
                 current_count = cake_supp("SubOffer_Cake_Suppression",sub_offer_id, f"{channel}_OFFER_MD5_{sub_offer_id}", current_count)
                 if str(channel).upper() != 'INFS':
                     current_count = conversions_supp("SubOffer_Cake_Converters", sub_offer_id, current_count)
 
-        main_logger.info(f"Suppression process ended for offerid: {offer_id}")
+        offer_logger.info(f"Suppression process ended for offerid: {offer_id}")
     except Exception as e:
-        main_logger.info(f"Exception occurred: At offer_download_and_suppression for requestid: {request_id}, "
+        offer_logger.info(f"Exception occurred: At offer_download_and_suppression for requestid: {request_id}, "
                          f"runNumber: {run_number}, offerid: {offer_id}. Please look into this. {str(e)}" + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and offer_files_db_conn.is_connected():
@@ -1194,6 +1196,7 @@ def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
+        current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
             single_res = {}
@@ -1202,12 +1205,12 @@ def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
             single_res['filterName'] = 'Green Global Suppression'
             single_res['countsBeforeFilter'] = result[0]['countsBeforeFilter']
             single_res['countsAfterFilter'] = result[-1]['countsAfterFilter']
-            return True, [single_res]
+            return True, [single_res], current_count
         else:
-            return True, result
+            return True, result, current_count
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}")
-        return False, str(e)
+        return False, str(e), 0
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1252,6 +1255,7 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
+        current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
             single_res = {}
@@ -1260,12 +1264,12 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
             single_res['filterName'] = 'Green FeedLevel Suppression'
             single_res['countsBeforeFilter'] = result[0]['countsBeforeFilter']
             single_res['countsAfterFilter'] = result[-1]['countsAfterFilter']
-            return True, [single_res]
+            return True, [single_res], current_count
         else:
-            return True, result
+            return True, result, current_count
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}")
-        return False, str(e)
+        return False, str(e), 0
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1430,7 +1434,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         sf_alter_main_table_query = f"alter table  {source_table} drop column account_name "
         logger.info(f"Executing query : {sf_alter_main_table_query}")
         sf_cursor.execute(sf_alter_main_table_query)
-
+        current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
             single_res = {}
@@ -1439,12 +1443,12 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             single_res['filterName'] = 'INFS FeedLevel Suppression'
             single_res['countsBeforeFilter'] = result[0]['countsBeforeFilter']
             single_res['countsAfterFilter'] = result[-1]['countsAfterFilter']
-            return True, [single_res]
+            return True, [single_res], current_count
         else:
-            return result
+            return True, result, current_count
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}")
-        return False, str(e)
+        return False, str(e), 0
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1466,19 +1470,54 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
 
 
 
-def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor, current_count, ):
-    request_id = main_request_details['id']
-    schedule_id = main_request_details['ScheduleId']
-    run_number = main_request_details['runNumber']
+def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor ):
+    logger.info("channel_suppression execution started.")
     channel = main_request_details['channelName']
     suppression_method = filter_details['suppressionMethod']
     result_breakdown_flag = ''
-    counts_before_filter = current_count
     if channel == 'GREEN':
         if suppression_method == 'F':
-            status, result = apply_green_feed_level_suppression(source_table, result_breakdown_flag, logger)
+            status, results, current_count = apply_green_feed_level_suppression(source_table, result_breakdown_flag, logger)
         elif suppression_method == 'G':
-            status, result = apply_green_global_suppression(source_table, result_breakdown_flag, logger)
+            status, results, current_count = apply_green_global_suppression(source_table, result_breakdown_flag, logger)
     elif channel == 'INFS':
-        status, result = apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logger)
+        status, results, current_count = apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logger)
 
+    if not status:
+        raise Exception('Exception occurred while performing channel_suppression. Please look into it.')
+    for result in results:
+        result['requestId'], result['requestScheduledId'], result['runNumber'] = main_request_details['id'],\
+            main_request_details['ScheduleId'], main_request_details['runNumber']
+        columns = ', '.join(result.keys())
+        values_formatter = ', '.join(['%s'] * len(result))
+        stats_insert_query = f"INSERT INTO {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} ({columns}) VALUES ({values_formatter})"
+        mysql_cursor.execute(stats_insert_query, tuple(result.values()))
+    logger.info("channel_suppression execution ended.")
+    return current_count
+
+
+def state_and_zip_suppression(filter_type, current_count, main_request_table, filter_values, main_logger, mysql_cursor, main_request_details):
+    try:
+        counts_before_filter = current_count
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        if filter_type == "ZIP_SUPPRESSION":
+            filter = "ZIP"
+        elif filter_type == "STATE_SUPPRESSION":
+            filter = "STATE"
+        filter_values = str(filter_values).replace(",", "','")
+        sf_update_query = f"update {main_request_table} a set do_suppressionStatus = '{filter_type}' from " \
+                          f"{POSTAL_TABLE} b where a.EMAIL_MD5 = b.md5hash and b.{filter} in ('{filter_values}')"
+        main_logger.info(f"Performing {filter_type}, Executing Query: {sf_update_query}")
+        sf_cursor.execute(sf_update_query)
+        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
+                                                                      ,filter_type,counts_before_filter,counts_after_filter,0,0))
+        return counts_after_filter
+    except Exception as e:
+        print(f"Exception occurred while performing {filter_type}. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while performing {filter_type}. {str(e)} ")
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()

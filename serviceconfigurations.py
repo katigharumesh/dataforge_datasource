@@ -185,8 +185,7 @@ FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressi
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                "postalFields from {} where id = {}"
 
-FETCH_REQUEST_OFFERS = f"select offerId from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestId = %s and " \
-                       f"requestScheduledId = %s and runNumber = %s"
+INSERT_REQUEST_OFFERS = f"insert into {SUPPRESSION_REQUEST_OFFERS_TABLE} (requestId,requestScheduledId,runNumber,offerId) values (%s,%s,%s,%s)"
 
 MAX_OFFER_THREADS_COUNT = 2
 
@@ -204,7 +203,7 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
     'allow_local_infile': True
 }
 
-POSTAL_TABLE = ""
+POSTAL_TABLE = "INFS_LPT.POSTAL_DATA"
 PROFILE_TABLE = ""
 POSTAL_MATCH_FIELDS = ""
 PROFILE_MATCH_FIELDS = ""
@@ -254,3 +253,4 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
         "INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM",
     )
 }
+
