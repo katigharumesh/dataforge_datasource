@@ -412,7 +412,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
-            sf_create_table_query += " varchar , do_inputSource varchar, do_inputSourceMappingId varchar as '{mapping_id}' )"
+            sf_create_table_query += f" varchar , do_inputSource varchar, do_inputSourceMappingId varchar as '{mapping_id}' )"
         else:
             last_run_table_name = table_name[:table_name.rindex('_')+1]+str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
@@ -902,12 +902,13 @@ def update_default_values(type_of_request, main_request_table, logger):
             sf_cursor.close()
             sf_conn.close()
 def load_match_or_filter_file_sources(type_of_request, file_source, file_source_index, main_request_details):
-    os.makedirs(f"{LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/", exist_ok=True)
-    os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/", exist_ok=True)
-    temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/"
+    print("Calling function load_match_or_filter_file_sources: Here are the arguments passed",type_of_request, file_source, file_source_index, main_request_details)
+    os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/", exist_ok=True)
+    os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/", exist_ok=True)
+    temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
     source_table = f"SUPPRESSION_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
     consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",
-                                    log_file_path=f"{LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}/{str(file_source_index)}/",
+                                    log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",
                                     log_to_stdout=True)
     file_source_type_id = file_source['sourceId']
     consumer_logger.info(f"Acquiring mysql connection...")
@@ -923,7 +924,7 @@ def load_match_or_filter_file_sources(type_of_request, file_source, file_source_
     password = file_source_details['password']
     source_type = file_source_details['sourceType']
     source_sub_type = file_source_details['sourceSubType']
-    input_data_dict = {'filePath': file_source['filePath'], 'delimeter': file_source['delimeter'], 'headerValue': file_source['headerValue']}
+    input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'], 'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
     request_id = main_request_details['id']
     run_number = main_request_details['runNumber']
     schedule_id = main_request_details['ScheduleId']
@@ -937,6 +938,7 @@ def load_match_or_filter_file_sources(type_of_request, file_source, file_source_
 
 def perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_filter_sources_loaded ,mysql_cursor, logger, current_count):
     try:
+        logger.info(f"Function perform_filter_or_match invoked for {type_of_request} : Sorted Sources Loaded are : {sorted_filter_sources_loaded} ")
         counts_before_filter = current_count
         is_first_match_filter = True
         if type_of_request == "SUPPRESS_MATCH":

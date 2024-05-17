@@ -40,9 +40,10 @@ import boto3
 # SCRIPT_PATH = r"D:\tmp\data_forge"
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
 SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/DATASET/"
+
 LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/" + "r_logs"  # local file path - mount to download the temp files
-PID_FILE = SCRIPT_PATH + "/app_REQUEST_ID.pid"
+PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
@@ -141,7 +142,7 @@ SUPP_SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/"
 #SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
 SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
 SUPP_FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/SUPPRESSION_REQUEST/r_logs"  # local file path - mount to download the temp files
-SUPP_PID_FILE = SUPP_SCRIPT_PATH + "/supp_REQUEST_ID.pid"
+SUPP_PID_FILE = SUPP_SCRIPT_PATH + "supp_REQUEST_ID.pid"
 
 SUPP_SOURCE_TABLE_PREFIX = "SUPPRESSION_INPUT_SOURCE_"
 MAIN_INPUT_SOURCE_TABLE_PREFIX = "SUPPRESSION_REQUEST_MAIN_INPUT_"
