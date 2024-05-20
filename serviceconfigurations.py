@@ -39,10 +39,10 @@ import boto3
 
 # SCRIPT_PATH = r"D:\tmp\data_forge"
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/DATASET/"
+SCRIPT_PATH = r"/home/zxdev/zxcustom/GANESH/"
 
 LOG_PATH = SCRIPT_PATH + "app_logs"
-FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/" + "r_logs"  # local file path - mount to download the temp files
+FILE_PATH = "/home/zxdev/zxcustom/GANESH/" + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
