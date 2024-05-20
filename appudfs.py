@@ -620,59 +620,71 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
             if (recurrenceType is not None and recurrenceType == 'H'):
                 nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
                                     f"case when date_add(now(),INTERVAL 1 HOUR) < '{endDate}' Then date_add(now(),INTERVAL 1 HOUR)" \
-                                    f"else '{endDate}' end where id={id}"
+                                    f"else '{endDate}' end,status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                 logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                 mysqlcur.execute(nextschedulequery)
             if (recurrenceType is not None and recurrenceType == 'D'):
                 if excludeDates is not None:
-                    timestamp = str(datetime.now()).split(' ')[1]
+
+                    timestamp = str(datetime.utcnow()).split(' ')[1]
                     # print(timestamp)
                     # print(excludeDates)
-                    nextscheduledatep = datetime.now().date() + timedelta(days=1)
+                    nextscheduledatep = datetime.utcnow().date() + timedelta(days=1)
                     while str(nextscheduledatep) in excludeDates:
                         nextscheduledatep += timedelta(days=1)
                     # print(nextscheduledatep)
                     nextscheduleDuep = str(nextscheduledatep) + ' ' + timestamp
                     # print(nextscheduleDuep)
+
+                    nextschedulequery=f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery,(str(nextscheduledatep),endDate,nextscheduleDuep,endDate))
                 else:
-                    nextscheduleDuep = datetime.now() + timedelta(days=1)
-                    nextscheduledatep = datetime.now().date() + timedelta(days=1)
-                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if('%s'<'%s','%s','%s') where id={id}"
-                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery , (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
-                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+                    #nextscheduleDuep = datetime.now() + timedelta(days=1)
+                    #nextscheduledatep = datetime.now().date() + timedelta(days=1)
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                        f"if(date_add(now(),INTERVAL 1 day)<='%s',date_add(now(),INTERVAL 1 day),'%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
 
             if (recurrenceType is not None and recurrenceType == 'W'):
                 if excludeDates is not None:
-                    timestamp = str(datetime.now()).split(' ')[1]
-                    nextscheduledate = datetime.now().date() + timedelta(days=7)
+                    timestamp = str(datetime.utcnow()).split(' ')[1]
+                    nextscheduledate = datetime.utcnow().date() + timedelta(days=7)
                     while nextscheduledate in excludeDates:
                         nextscheduledate += timedelta(days=7)
 
                     nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
                 else:
-                    nextscheduleDuep = datetime.now() + timedelta(days=7)
+                    nextscheduleDuep = datetime.utcnow() + timedelta(days=7)
 
-                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if('%s'<'%s','%s','%s') where id={id}"
-                # logger.info(nextschedulequery)
-                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
-                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                        f"if(date_add(now(),Interval 1 WEEK)<='%s',date_add(now(),INTERVAL 1 WEEK),'%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+
+                    # logger.info(nextschedulequery)
+                    logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
 
             if (recurrenceType is not None and recurrenceType == 'M'):
                 if excludeDates is not None:
-                    timestamp = str(datetime.now()).split(' ')[1]
-                    nextscheduledate = datetime.now().date() + timedelta(months=1)
+                    timestamp = str(datetime.utcnow()).split(' ')[1]
+                    nextscheduledate = datetime.utcnow().date() + timedelta(months=1)
                     while nextscheduledate in excludeDates:
                         nextscheduledate += timedelta(months=1)
 
                     nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
                 else:
-                    nextscheduleDuep = datetime.now() + timedelta(months=1)
-                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if('%s'<'%s','%s','%s') where id={id}"
-                logger.info(f"Updating nextScheduleDue, query : {nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate)}")
-                mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
+                    nextscheduleDuep = datetime.utcnow() + timedelta(months=1)
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"if(date_add(now(),Interval 1 Month) <= '%s',date_add(now(),Interval 1 Month),'%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
+                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
 
             if recurrenceType is None and request_status == 'C':
                 update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
@@ -1511,7 +1523,8 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
         main_logger.info(f"Performing {filter_type}, Executing Query: {sf_update_query}")
         sf_cursor.execute(sf_update_query)
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],
+                                                                      main_request_details['runNumber'],'NA','Suppression','NA'
                                                                       ,filter_type,counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
