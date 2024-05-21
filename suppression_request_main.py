@@ -185,7 +185,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                                  (main_request_details['ScheduleId'], main_request_details['runNumber']))
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
                                                           f'Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
-            update_next_schedule_due(supp_request_id, run_number, main_logger)
+            update_next_schedule_due("SUPPRESSION_REQUEST",supp_request_id, run_number, main_logger)
             os.remove(pid_file)
             return
         main_logger.info(
@@ -225,7 +225,7 @@ def main(supp_request_id, run_number):
             main_logger.info("Script execution is already in progress, hence skipping the execution.")
             send_skype_alert("Script execution is already in progress, hence skipping the execution.")
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', 'Due to PID existence', supp_request_id, run_number))
-            update_next_schedule_due(supp_request_id, run_number, main_logger) # FOR SUPP
+            update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger) # FOR SUPP
             return
         Path(pid_file).touch()
         start_time = time.time()
@@ -263,7 +263,7 @@ def main(supp_request_id, run_number):
                   f" Considering the suppression request as failed.")
             mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {input_sources_count} sources.', supp_request_id, run_number))
-            update_next_schedule_due(supp_request_id, run_number, main_logger)
+            update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
             os.remove(pid_file)
             return
         main_logger.info("All sources are successfully processed.")
@@ -319,7 +319,7 @@ def main(supp_request_id, run_number):
 
         #data append
         data_append(filter_details, main_request_table, main_logger)
-        update_next_schedule_due(supp_request_id, run_number, main_logger)
+        update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
         os.remove(pid_file)

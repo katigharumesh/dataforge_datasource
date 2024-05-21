@@ -80,7 +80,7 @@ def main(request_id, run_number, schedule_time, notification_mails):
             main_logger.info("Script execution is already in progress, hence skipping the execution.")
             send_skype_alert("Script execution is already in progress, hence skipping the execution.")
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
-            update_next_schedule_due(request_id, run_number, main_logger)
+            update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger)
             send_mail(ERROR_EMAIL_SUBJECT.format("Dataset",str(request_id)),
                       MAIL_BODY.format("Dataset",str(request_id),str(run_number),str(schedule_time),
                                        'E\nError Reason: Due to processing of another instance'))
@@ -120,7 +120,7 @@ def main(request_id, run_number, schedule_time, notification_mails):
                   f" Considering the datasource preparation request as failed.")
             mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(sources_loaded)} sources are successfully processed out of {input_sources_count} sources.', request_id, run_number))
-            update_next_schedule_due(request_id, run_number, main_logger)
+            update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
             os.remove(pid_file)
             return
         main_logger.info("All sources are successfully processed.")
@@ -128,7 +128,7 @@ def main(request_id, run_number, schedule_time, notification_mails):
         # Preparing request level main_datasource
         ordered_sources_loaded = [x[0] for x in sorted(sources_loaded, key=lambda x: x[1])]
         create_main_datasource(ordered_sources_loaded, main_request_details)
-        update_next_schedule_due(request_id, run_number, main_logger, 'C')
+        update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger, 'C')
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
         os.remove(pid_file)
