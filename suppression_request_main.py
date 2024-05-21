@@ -318,7 +318,7 @@ def main(supp_request_id, run_number):
 
 
         #data append
-        data_append(filter_details, main_request_table , main_logger)
+        data_append(filter_details, main_request_table, main_logger)
         update_next_schedule_due(supp_request_id, run_number, main_logger)
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
@@ -343,4 +343,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
+
 

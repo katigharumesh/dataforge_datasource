@@ -64,8 +64,9 @@ def load_input_sources_consumer(sources_queue, main_request_details, queue_empty
 
 
 # Main function
-def main(request_id, run_number):
+def main(request_id, run_number, schedule_time, notification_mails):
     try:
+        recipient_mails = RECEPIENT_EMAILS + notification_mails.split(',')
         os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
         main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -80,6 +81,9 @@ def main(request_id, run_number):
             send_skype_alert("Script execution is already in progress, hence skipping the execution.")
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
             update_next_schedule_due(request_id, run_number, main_logger)
+            send_mail(ERROR_EMAIL_SUBJECT.format("Dataset",str(request_id)),
+                      MAIL_BODY.format("Dataset",str(request_id),str(run_number),str(schedule_time),
+                                       'E\nError Reason: Due to processing of another instance'))
             return
         Path(pid_file).touch()
         start_time = time.time()
@@ -140,13 +144,13 @@ if __name__ == "__main__":
     try:
         request_id = "8"
         run_number = "0"
-        if len(sys.argv) > 1:
-            request_id = str(sys.argv[1])
-            run_number = str(sys.argv[2])
-        main(request_id, run_number)
+        schedule_time = "2024-01-02 00:50:10"
+        notification_mails = ""
+        main(request_id, run_number, schedule_time, notification_mails)
 
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
+
 
 

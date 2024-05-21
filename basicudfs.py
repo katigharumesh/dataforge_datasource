@@ -97,3 +97,4 @@ def send_mail(subject, message_body, sender_email=FROM_EMAIL, recipient_emails=R
     with smtplib.SMTP('localhost', 25) as server:
         server.sendmail(sender_email, recipient_emails, message.as_string())
 
+

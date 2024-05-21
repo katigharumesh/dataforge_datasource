@@ -1192,6 +1192,7 @@ def get_record_count(table, sf_cursor):
     return sf_cursor.fetchone()[0]
 
 
+
 def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
     try:
         result = []
