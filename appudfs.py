@@ -571,7 +571,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             field_delimiter = input_data_dict['delimiter']
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
-            sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}', '{mapping_id}' FROM @{stage_name} ) FILE_FORMAT = (ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE ) "
+            sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}', '{mapping_id}' FROM @{stage_name} ) FILE_FORMAT = (ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE {header_exists} ) "
             consumer_logger.info(f"Executing query: {sf_copy_into_query}")
             sf_cursor.execute(sf_copy_into_query)
             file_details_dict['status'] = 'C'
