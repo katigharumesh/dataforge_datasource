@@ -39,16 +39,16 @@ import boto3
 
 # SCRIPT_PATH = r"D:\tmp\data_forge"
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/home/zxdev/zxcustom/GANESH/"
+SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/DATASET/"
 
 LOG_PATH = SCRIPT_PATH + "app_logs"
-FILE_PATH = "/home/zxdev/zxcustom/GANESH/" + "r_logs"  # local file path - mount to download the temp files
+FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/r_logs/" + "r_logs"  # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
 
-THREAD_COUNT = 2  # thread count
+THREAD_COUNT = 4  # thread count
 
 skype_configurations = {
     'url': 'http://zds-prod-ext-greenapp1-vip.bo3.e-dialog.com/sendSkypeAlerts/index.php?key=',

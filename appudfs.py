@@ -106,8 +106,8 @@ def load_input_source(type_of_request, source, main_request_details):
                         f"using (select {grouping_fields} from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
                         f" group by {grouping_fields} having count(1)< {touch_count}) b "
                         f"where {join_fields}")
-                sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
-                                  f" add column do_inputSource varchar as '{sf_source_name}', add column do_inputSourceMappingId varchar as '{mapping_id}'")
+                sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}" \
+                                  f" add column do_inputSource varchar default '{sf_source_name}', do_inputSourceMappingId varchar default '{mapping_id}'")
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
@@ -168,7 +168,7 @@ def create_main_datasource(sources_loaded, main_request_details):
             sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_datasource_table} add column email_md5 varchar as md5(email_id)")
-        sf_cursor.execute(f"alter table {temp_datasource_table} add column do_inputSource varchar as '{data_source_name}'")
+        sf_cursor.execute(f"alter table {temp_datasource_table} add column do_inputSource varchar default '{data_source_name}'")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
@@ -354,7 +354,10 @@ class ProcessS3Files:
             bucket_name = file.split('/')[2]
             key = '/'.join(file.split('/')[3:])
             obj = self.s3_client.get_object(Bucket=bucket_name, Key=key)
-            first_line = obj['Body'].readline().decode().strip()
+            streaming_body = obj['Body']
+            for line in streaming_body.iter_lines():
+                first_line = line.decode('utf-8')
+                break
             if len(str(first_line).split(delimiter)) == len(header_value.split(delimiter)):
                 return True
             else:
@@ -412,7 +415,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
-            sf_create_table_query += f" varchar , do_inputSource varchar, do_inputSourceMappingId varchar as '{mapping_id}' )"
+            sf_create_table_query += f" varchar , do_inputSource varchar, do_inputSourceMappingId varchar default '{mapping_id}' )"
         else:
             last_run_table_name = table_name[:table_name.rindex('_')+1]+str(last_successful_run_number)
             sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
@@ -426,7 +429,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             if len(files_list) >= 1 :
                 consumer_logger.info("There are many files with comma separated...")
                 for file in files_list:
-                    file_details_dict = process_single_file(temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
+                    file_details_dict = process_single_file(mapping_id, temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
                     fileName = file_details_dict["filename"]
                     count = file_details_dict["count"]
@@ -458,7 +461,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             consumer_logger.info("First time/existing files processing..")
             for file in files_list:
                 fully_qualified_file = input_data_dict["filePath"] + file
-                file_details_dict = process_single_file(temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
+                file_details_dict = process_single_file(mapping_id, temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
                                                         last_iteration_files_details, source_sub_type, username, password)
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
@@ -485,7 +488,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             sf_conn.close()
 
 
-def process_single_file(temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,
+def process_single_file(mapping_id, temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,
                         table_name, last_iteration_files_details, source_sub_type, username = None, password = None):
     try:
         file_details_dict = {}
@@ -568,7 +571,7 @@ def process_single_file(temp_files_path, run_number, source_obj, fully_qualified
             field_delimiter = input_data_dict['delimiter']
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             stage_columns = ", ".join(f"${i + 1}" for i in range(len(header_list)))
-            sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}' FROM @{stage_name} ) "
+            sf_copy_into_query = f"copy into {table_name} FROM (select {stage_columns}, '{file}', '{mapping_id}' FROM @{stage_name} ) FILE_FORMAT = (ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE ) "
             consumer_logger.info(f"Executing query: {sf_copy_into_query}")
             sf_cursor.execute(sf_copy_into_query)
             file_details_dict['status'] = 'C'
@@ -612,7 +615,8 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                     excludeDates = request[6].split(',')
                 except:
                     excludeDates = request[6].split()
-
+            else:
+                excludeDates = None
             #scheduleNextquery = f"update {SCHEDULE_TABLE} set status='W',runnumber=runnumber+1 where id={id}"
             #logger.info(f"Updating schedule status and runnumber, query :: {scheduleNextquery}")
             #mysqlcur.execute(scheduleNextquery)
@@ -643,7 +647,7 @@ def update_next_schedule_due(request_id, run_number, logger, request_status='E')
                     #nextscheduleDuep = datetime.now() + timedelta(days=1)
                     #nextscheduledatep = datetime.now().date() + timedelta(days=1)
                     nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                        f"if(date_add(now(),INTERVAL 1 day)<='%s',date_add(now(),INTERVAL 1 day),'%s'),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                                        f"if(date_add(now(),INTERVAL 1 day)<=%s,date_add(now(),INTERVAL 1 day),%s),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (endDate,endDate))
 
