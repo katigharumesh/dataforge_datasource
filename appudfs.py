@@ -871,7 +871,7 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         logger.info("Snowflake connection acquired successfully...")
         alter_fields_list = to_append_columns.split(",")
         sf_alter_table_query = f"alter table  {result_table}  add column "
-        sf_alter_table_query += " varchar ,add column ".join(i for i in alter_fields_list)
+        sf_alter_table_query += " varchar , ".join(i for i in alter_fields_list)
         sf_alter_table_query += " varchar"
         logger.info(f"Executing query: {sf_alter_table_query}")
         sf_cursor.execute(sf_alter_table_query)
