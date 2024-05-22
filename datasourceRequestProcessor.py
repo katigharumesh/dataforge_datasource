@@ -134,6 +134,7 @@ def main(request_id, run_number, schedule_time, notification_mails):
         os.remove(pid_file)
     except Exception as e:
         main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
+        update_next_schedule_due("SUPPRESSION_REQUEST", request_id, run_number, main_logger)
         os.remove(pid_file)
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
