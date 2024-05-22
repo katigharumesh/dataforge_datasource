@@ -521,7 +521,10 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
                     return file_details_dict
         if source_sub_type != 'A':
             source_obj.download_file(fully_qualified_file, temp_files_path + file)
-            line_count = sum(1 for _ in open(temp_files_path + file, 'r'))
+            if input_data_dict['isHeaderExists']:
+                line_count = sum(1 for _ in open(temp_files_path + file, 'r')) - 1
+            else:
+                line_count = sum(1 for _ in open(temp_files_path + file, 'r'))
             file_details_dict["count"] = line_count
         file_details_dict["filename"] = file
         file_details_dict["size"] = meta_data["size"]

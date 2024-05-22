@@ -319,7 +319,7 @@ def main(supp_request_id, run_number):
 
         #data append
         data_append(filter_details, main_request_table, main_logger)
-        update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
+        update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
         os.remove(pid_file)
