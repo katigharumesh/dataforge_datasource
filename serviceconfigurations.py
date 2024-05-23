@@ -258,8 +258,8 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
 # email notification configurations
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
-RECEPIENT_EMAILS = []
-EMAIL_SUBJECT = "Dataops %s %s"
+#RECEPIENT_EMAILS = []
+EMAIL_SUBJECT = "Dataops {} {}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
 MAIL_BODY = '''Hi Team,
 
@@ -267,11 +267,11 @@ This is a system generated mail, please do not reply.
 
 Below are the request details.
 
-Request Type: %s
-Request Id: %s
-Run Number: %s
-Schedule Time: %s
-Status: %s
+Request Type: {}
+Request Id: {}
+Run Number: {}
+Schedule Time: {}
+Status: {}
 
 
 Thanks,

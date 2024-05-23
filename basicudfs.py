@@ -91,7 +91,7 @@ def send_mail(subject, message_body, sender_email=FROM_EMAIL, recipient_emails=R
 
     # Add message body
     message.attach(MIMEText(message_body, message_type))
-    with open (MAIL_HTML_FILE,"wb") as file:
+    with open (MAIL_HTML_FILE,"w") as file:
         file.write(message_body)
     # Connect to localhost SMTP server
     with smtplib.SMTP('localhost', 25) as server:

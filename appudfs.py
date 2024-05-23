@@ -600,14 +600,16 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
     try:
         if type_of_request == "SUPPRESSION_REQUEST":
             schedule_table = SUPP_SCHEDULE_TABLE
+            column_to_fetch = "requestId"
         elif type_of_request == "SUPPRESSION_DATASET":
             schedule_table = SCHEDULE_TABLE
+            column_to_fetch = "datasourceId"
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor()
         mysqlcur.execute("set time_zone='UTC';")
-        requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
+        requestquery = f"select id,{column_to_fetch},runnumber,recurrenceType,startDate,endDate,excludeDates," \
                        f"date(nextscheduleDue) as nextscheduledate from {schedule_table} where status='I' " \
-                       f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
+                       f"and nextScheduleDue<now() and {column_to_fetch}={request_id} and runnumber={run_number} "
         logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
         mysqlcur.execute(requestquery)
         requestList = mysqlcur.fetchall()
@@ -777,11 +779,11 @@ def create_main_input_source(sources_loaded, main_request_details):
         counts_before_filter = counts_after_filter
         if feed_type != 'A':
             if feed_type == 'F':
-                sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select listid from {FP_LISTIDS_SF_TABLE})")
+                sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})")
                 supp_count = sf_cursor.rowcount
                 filter_name = 'Third Party listids suppression'
             elif feed_type == 'T':
-                sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select listid from {FP_LISTIDS_SF_TABLE})")
+                sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})")
                 supp_count = sf_cursor.rowcount
                 filter_name = 'First Party listids suppression'
             else:

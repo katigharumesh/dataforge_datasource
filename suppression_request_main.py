@@ -150,10 +150,10 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     if channel_level_filter:
         channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
         channel_files_db_cursor = channel_files_db_conn.cursor(dictionary=True)
-        channel_files_db_cursor.execute(f"select TABLE_NAME,concat(FILENAME,DOWNLOAD_COUNT,INSERT_COUNT),'{channel_filter_name}' from"
-                                        f" SUPPRESSION_MATCH_FILES where FILE_TYPE='{channel_file_type}' and  STATUS='A' and ID in "
-                                        f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where "
-                                        f"CHANNEL='{main_request_table['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
+        channel_files_db_cursor.execute(f"select TABLE_NAME,concat(FILENAME,DOWNLOAD_COUNT,INSERT_COUNT),'{channel_filter_name}' from" \
+                                        f" SUPPRESSION_MATCH_FILES where FILE_TYPE='{channel_file_type}' and  STATUS='A' and ID in " \
+                                        f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where " \
+                                        f"CHANNEL='{main_request_details['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
         sorted_match_or_filter_sources_loaded += channel_files_db_cursor.fetchall()
     if len(match_or_filter_source_details) != 0:
         match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
@@ -210,8 +210,9 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
 
 
 # Main function
-def main(supp_request_id, run_number):
+def main(supp_request_id, run_number, schedule_time=None, notification_mails=""):
     try:
+        recipient_emails = RECEPIENT_EMAILS + notification_mails.split(',')
         os.makedirs(f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}", exist_ok=True)
         main_logger = create_logger(f"supp_request_{str(supp_request_id)}_{str(run_number)}", log_file_path=f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}/", log_to_stdout=True)
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -223,7 +224,10 @@ def main(supp_request_id, run_number):
         pid_file = SUPP_PID_FILE.replace('REQUEST_ID', str(supp_request_id))
         if os.path.exists(str(pid_file)):
             main_logger.info("Script execution is already in progress, hence skipping the execution.")
-            send_skype_alert("Script execution is already in progress, hence skipping the execution.")
+            #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
+            send_mail(ERROR_EMAIL_SUBJECT.format("SUPPRESSION REQUEST", str(supp_request_id)),
+                      MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
+                                       'E\nError Reason: Due to processing of another instance'), recipient_emails=recipient_emails)
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', 'Due to PID existence', supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger) # FOR SUPP
             return
@@ -284,8 +288,7 @@ def main(supp_request_id, run_number):
         # Performing isps filtration
         current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
-        # Performing channel suppression
-        current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger, mysql_cursor )
+
 
         # Data Match Selection
         current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
@@ -293,6 +296,9 @@ def main(supp_request_id, run_number):
         #Data filter Selection
         current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 
+        # Performing channel suppression
+        current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger,
+                                            mysql_cursor)
         # Performing ZIPs suppression
         if filter_details['zipSuppression']:
             current_count = state_and_zip_suppression('ZIP_SUPPRESSION', current_count, main_request_table,
@@ -304,7 +310,6 @@ def main(supp_request_id, run_number):
                                                       filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
 
         # Performing Purdue suppression
-
 
 
         #Offer downloading and suppression
@@ -319,6 +324,8 @@ def main(supp_request_id, run_number):
 
         #data append
         data_append(filter_details, main_request_table, main_logger)
+        main_logger.info(f"Executing : {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
+        mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
         update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
         end_time = time.time()
         main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
@@ -326,6 +333,9 @@ def main(supp_request_id, run_number):
     except Exception as e:
         main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
         update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
+        send_mail(ERROR_EMAIL_SUBJECT.format("SUPPRESSION REQUEST", str(supp_request_id)),
+                  MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
+                                   'E \\nError Reason: Error in Main function'),recipient_emails=recipient_emails)
         os.remove(pid_file)
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
@@ -334,15 +344,14 @@ def main(supp_request_id, run_number):
 
 if __name__ == "__main__":
     try:
-        supp_request_id = "10"
+        supp_request_id = "16"
         run_number = "0"
-        if len(sys.argv) > 1:
-            supp_request_id = str(sys.argv[1])
-            run_number = str(sys.argv[2])
-        main(supp_request_id, run_number)
+        schedule_time = "2024-01-02 00:50:10"
+        notification_mails = "glenka@aptroid.com"
+        main(supp_request_id, run_number, schedule_time, notification_mails)
+
 
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
-
 
