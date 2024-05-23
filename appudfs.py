@@ -159,7 +159,7 @@ def create_main_datasource(sources_loaded, main_request_details):
         sf_cursor = sf_conn.cursor()
         main_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
         temp_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
-        main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select {filter_match_fields} from {sf_data_source}"
+        main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select distinct {filter_match_fields} from {sf_data_source}"
         print(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
@@ -398,7 +398,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
 
         last_iteration_files_details = []
         if run_number != 0:
-            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id)))
+            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id),))
             last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
             last_iteration_files_details = mysql_cursor.fetchall()
@@ -585,7 +585,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
                                  f"FIELD_OPTIONALLY_ENCLOSED_BY='\"' ERROR_ON_COLUMN_COUNT_MISMATCH = FALSE {header_exists} {compression})"
             consumer_logger.info(f"Executing query: {sf_copy_into_query}")
             sf_cursor.execute(sf_copy_into_query)
-            sf_update_query = f"update {table_name} set do_inputSource = '{file}' where do_inputSource is null"
+            sf_update_query = f"update {table_name} set do_inputSource = '{file}',do_inputSourceMappingId= DEFAULT where do_inputSource is null"
             consumer_logger.info(f"Executing query: {sf_update_query}")
             sf_cursor.execute(sf_update_query)
             file_details_dict["count"] = sf_cursor.rowcount

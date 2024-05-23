@@ -7,7 +7,7 @@ def send_skype_alert(msg, channel=skype_configurations['default_channel']):
         current_milliseconds = int(time.time() * 1000)
         file = open(f"{skype_configurations['file_path']}/{str(current_milliseconds)}_{str(random_number)}.txt", "w")
         file.write(
-            f"Hi Team \nPlease look into issue below.\nService: DATA FORGE\nScript_path:{skype_configurations['script_path']}\nScript_name={skype_configurations['script_name']}\nserver:{skype_configurations['server']}\nlogpath: {skype_configurations['log_path']}\nError:\n")
+            f"Hi Team \nPlease look into issue below.\nService: DATA OPS\nScript_path:{skype_configurations['script_path']}\nScript_name={skype_configurations['script_name']}\nserver:{skype_configurations['server']}\nlogpath: {skype_configurations['log_path']}\nError:\n")
         file.write(str(msg))
         file.close()
         url = f"{skype_configurations['url']}{channel}"
