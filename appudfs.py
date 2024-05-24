@@ -393,11 +393,11 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         #consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id))}")
         #mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id)))
 
-        last_successful_run_number = 0
+       # last_successful_run_number = 1
         # mysql_cursor.execute(last_successful_run_number_query)
 
         last_iteration_files_details = []
-        if run_number != 0:
+        if run_number != 1:
             mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id),))
             last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
             mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
@@ -410,7 +410,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection acquired successfully")
-        if run_number == 0:
+        if run_number == 1:
             field_delimiter = input_data_dict['delimiter']
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
@@ -508,7 +508,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
-        if run_number != 0:
+        if run_number != 1:
             last_iteration_file_names_list = [i["filename"] for i in last_iteration_files_details]
             consumer_logger.info(f"last iteration files are {str(last_iteration_file_names_list)}")
             if file in last_iteration_file_names_list:
@@ -607,9 +607,9 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor()
         mysqlcur.execute("set time_zone='UTC';")
-        requestquery = f"select id,{column_to_fetch},runnumber,recurrenceType,startDate,endDate,excludeDates," \
-                       f"date(nextscheduleDue) as nextscheduledate from {schedule_table} where status='I' " \
-                       f"and nextScheduleDue<now() and {column_to_fetch}={request_id} and runnumber={run_number} "
+        requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates" \
+                       f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone from {SCHEDULE_TABLE} where status='I' " \
+                       f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
         logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
         mysqlcur.execute(requestquery)
         requestList = mysqlcur.fetchall()
@@ -619,88 +619,132 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
             id = request[0]
             startDate = request[4]
             endDate = str(request[5])
+            sendAt = str(request[8])
+            timezone = str(request[9])
             if request[6] is not None:
                 try:
                     excludeDates = request[6].split(',')
                 except:
                     excludeDates = request[6].split()
-            else:
-                excludeDates = None
-            #scheduleNextquery = f"update {schedule_table} set status='W',runnumber=runnumber+1 where id={id}"
-            #logger.info(f"Updating schedule status and runnumber, query :: {scheduleNextquery}")
-            #mysqlcur.execute(scheduleNextquery)
+
+            scheduleNextquery = f"update {SCHEDULE_TABLE} set status='W',runnumber=runnumber+1 where id={id}"
+            logger.info(f"Updating schedule status and runnumber, query :: {scheduleNextquery}")
+            mysqlcur.execute(scheduleNextquery)
+
 
             if (recurrenceType is not None and recurrenceType == 'H'):
-                nextschedulequery = f"update {schedule_table} set nextScheduleDue=" \
-                                    f"case when date_add(now(),INTERVAL 1 HOUR) < '{endDate}' Then date_add(now(),INTERVAL 1 HOUR)" \
-                                    f"else '{endDate}' end,status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"case when date(now()) < '{endDate}' Then date_add(now(),Interval 60 - minute(now()))" \
+                                    f"else '{endDate}' end,status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                 logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                 mysqlcur.execute(nextschedulequery)
             if (recurrenceType is not None and recurrenceType == 'D'):
+                utcTime = ''
+                if timezone == 'IST':
+                    ist_time_format = "%H:%M %p"
+                    istTime = datetime.strptime(sendAt, ist_time_format)
+                    timeDifference = timedelta(hours=5, minutes=30)
+                    utcTime = str(istTime - timeDifference).split(' ')[0]
+                if timezone == 'EST':
+                    est_time_format = "%H:%M %p"
+                    estTime = datetime.strptime(sendAt, est_time_format)
+                    timeDifference = timedelta(hours=-4)
+                    utcTime = str(estTime - timeDifference).split(' ')[0]
                 if excludeDates is not None:
 
-                    timestamp = str(datetime.utcnow()).split(' ')[1]
-                    # print(timestamp)
-                    # print(excludeDates)
-                    nextscheduledatep = datetime.utcnow().date() + timedelta(days=1)
+                    #timestamp = str(datetime.utcnow()).split(' ')[1]
+
+                    nextscheduledatep=datetime.utcnow().date() + timedelta(days=1)
                     while str(nextscheduledatep) in excludeDates:
                         nextscheduledatep += timedelta(days=1)
                     # print(nextscheduledatep)
-                    nextscheduleDuep = str(nextscheduledatep) + ' ' + timestamp
+                    nextscheduleDuep = str(nextscheduledatep) + ' ' + utcTime
                     # print(nextscheduleDuep)
 
-                    nextschedulequery=f"update {schedule_table} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextschedulequery=f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery,(str(nextscheduledatep),endDate,nextscheduleDuep,endDate))
                 else:
-                    #nextscheduleDuep = datetime.now() + timedelta(days=1)
+                    nextscheduledatep = datetime.utcnow().date() + timedelta(days=1)
+                    nextscheduleDuep = str(nextscheduledatep)+ ' ' + utcTime
+
                     #nextscheduledatep = datetime.now().date() + timedelta(days=1)
-                    nextschedulequery = f"update {schedule_table} set nextScheduleDue=" \
-                                        f"if(date_add(now(),INTERVAL 1 day)<=%s,date_add(now(),INTERVAL 1 day),%s),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                        f"if('%s'<='%s','%s','%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
-                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
+                    mysqlcur.execute(nextschedulequery, (str(nextscheduledatep),endDate,nextscheduleDuep,endDate))
 
             if (recurrenceType is not None and recurrenceType == 'W'):
+                utcTime = ''
+                if timezone == 'IST':
+                    ist_time_format = "%H:%M %p"
+                    istTime = datetime.strptime(sendAt, ist_time_format)
+                    timeDifference = timedelta(hours=5, minutes=30)
+                    utcTime = str(istTime - timeDifference).split(' ')[0]
+                if timezone == 'EST':
+                    est_time_format = "%H:%M %p"
+                    estTime = datetime.strptime(sendAt, est_time_format)
+                    timeDifference = timedelta(hours=-4)
+                    utcTime = str(estTime - timeDifference).split(' ')[0]
+
                 if excludeDates is not None:
-                    timestamp = str(datetime.utcnow()).split(' ')[1]
+                    #timestamp = str(datetime.utcnow()).split(' ')[1]
                     nextscheduledate = datetime.utcnow().date() + timedelta(days=7)
                     while nextscheduledate in excludeDates:
+
+
+
+
+
                         nextscheduledate += timedelta(days=7)
 
-                    nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
-                    nextschedulequery = f"update {schedule_table} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextscheduleDuep = str(nextscheduledate) + ' ' + utcTime
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
                 else:
-                    nextscheduleDuep = datetime.utcnow() + timedelta(days=7)
+                    nextscheduledatep = datetime.utcnow().date() + timedelta(days=7)
+                    nextscheduleDuep = str(nextscheduledatep)+ ' ' + utcTime
 
-                    nextschedulequery = f"update {schedule_table} set nextScheduleDue=" \
-                                        f"if(date_add(now(),Interval 1 WEEK)<='%s',date_add(now(),INTERVAL 1 WEEK),'%s'),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                        f"if('%s'<='%s','%s','%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
 
                     # logger.info(nextschedulequery)
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
-                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
+                    mysqlcur.execute(nextschedulequery, (str(nextscheduledatep),endDate,nextscheduleDuep,endDate))
 
             if (recurrenceType is not None and recurrenceType == 'M'):
+                utcTime = ''
+                if timezone == 'IST':
+                    ist_time_format = "%H:%M %p"
+                    istTime = datetime.strptime(sendAt, ist_time_format)
+                    timeDifference = timedelta(hours=5, minutes=30)
+                    utcTime = str(istTime - timeDifference).split(' ')[0]
+                if timezone == 'EST':
+                    est_time_format = "%H:%M %p"
+                    estTime = datetime.strptime(sendAt, est_time_format)
+                    timeDifference = timedelta(hours=-4)
+                    utcTime = str(estTime - timeDifference).split(' ')[0]
                 if excludeDates is not None:
                     timestamp = str(datetime.utcnow()).split(' ')[1]
                     nextscheduledate = datetime.utcnow().date() + timedelta(months=1)
                     while nextscheduledate in excludeDates:
                         nextscheduledate += timedelta(months=1)
 
-                    nextscheduleDuep = str(nextscheduledate) + ' ' + timestamp
-                    nextschedulequery = f"update {schedule_table} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextscheduleDuep = str(nextscheduledate) + ' ' + utcTime
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=%s,%s,%s),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (str(nextscheduledatep), endDate, nextscheduleDuep, endDate))
                 else:
-                    nextscheduleDuep = datetime.utcnow() + timedelta(months=1)
-                    nextschedulequery = f"update {schedule_table} set nextScheduleDue=" \
-                                    f"if(date_add(now(),Interval 1 Month) <= '%s',date_add(now(),Interval 1 Month),'%s'),status=if(nextScheduleDue>=endDate,'C','W'),runnumber=runnumber+1 where id={id}"
+                    nextscheduledatep = datetime.utcnow().date() + timedelta(months=7)
+                    nextscheduleDuep=str(nextscheduledate) + ' ' + utcTime
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                    f"if('%s' <= '%s','%s','%s'),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
-                    mysqlcur.execute(nextschedulequery, (endDate,endDate))
+                    mysqlcur.execute(nextschedulequery, (str(nextscheduledatep),endDate,nextscheduleDuep,endDate))
 
             if recurrenceType is None and request_status == 'C':
-                update_schedule_status = f"update {schedule_table} set status = 'C' where id={id}"
+                update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
                 logger.info(f"Updating Schedule table status for successful execution of adhoc type request, query : {update_schedule_status}")
                 mysqlcur.execute(update_schedule_status)
             logger.info("Successfully updated schedule table details")

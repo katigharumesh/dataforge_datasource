@@ -149,8 +149,8 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
         return current_count
     if channel_level_filter:
         channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
-        channel_files_db_cursor = channel_files_db_conn.cursor(dictionary=True)
-        channel_files_db_cursor.execute(f"select TABLE_NAME,concat(FILENAME,DOWNLOAD_COUNT,INSERT_COUNT),'{channel_filter_name}' from" \
+        channel_files_db_cursor = channel_files_db_conn.cursor()
+        channel_files_db_cursor.execute(f"select concat('{CHANNEL_OFFER_FILES_SF_SCHEMA}.',TABLE_NAME),concat(FILENAME,',',DOWNLOAD_COUNT,',',INSERT_COUNT),'{channel_filter_name}' from" \
                                         f" SUPPRESSION_MATCH_FILES where FILE_TYPE='{channel_file_type}' and  STATUS='A' and ID in " \
                                         f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where " \
                                         f"CHANNEL='{main_request_details['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
@@ -335,7 +335,7 @@ def main(supp_request_id, run_number, schedule_time=None, notification_mails="")
         update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
         send_mail(ERROR_EMAIL_SUBJECT.format("SUPPRESSION REQUEST", str(supp_request_id)),
                   MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
-                                   'E \\nError Reason: Error in Main function'),recipient_emails=recipient_emails)
+                                   'E \nError Reason: Error in Main function'),recipient_emails=recipient_emails)
         os.remove(pid_file)
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
@@ -345,7 +345,7 @@ def main(supp_request_id, run_number, schedule_time=None, notification_mails="")
 if __name__ == "__main__":
     try:
         supp_request_id = "16"
-        run_number = "0"
+        run_number = "1"
         schedule_time = "2024-01-02 00:50:10"
         notification_mails = "glenka@aptroid.com"
         main(supp_request_id, run_number, schedule_time, notification_mails)
@@ -354,4 +354,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Exception raised . Please look into this.... {str(e)}" + str(traceback.format_exc()))
         exit_program(-1)
+
+
 
