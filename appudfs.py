@@ -1157,7 +1157,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
 
                 sf_update_table_query = f"update {main_request_table} a set {column_to_update} = '{static_file_table}' " \
                                         f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where" \
-                                        f" a.EMAIL_MD5 = b.md5hash and {column_to_update} = {default_value}"
+                                        f" a.EMAIL_MD5 = b.md5hash and {column_to_update} = '{default_value}'"
                 if type == "Suppression":
                     sf_update_table_query += f" AND a.do_matchStatus_{offer_id} != 'NON_MATCH' "
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
