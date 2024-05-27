@@ -1167,7 +1167,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                         counts_before_filter = 0
                         is_first_file = False
                     counts_after_filter = counts_before_filter + sf_cursor.rowcount
-                elif type == "SUPPRESSION":
+                elif type == "Suppression":
                     counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 if offer_id == associate_offer_id:
                     filter_type = f"MainOffer_File_{type}"
@@ -1206,9 +1206,11 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         # Cake suppression
         def cake_supp(filter_type, associate_offer_id, supp_table, current_count):
             counts_before_filter = current_count
-            sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' from"
-                              f" {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash  and "
-                              f"a.do_matchStatus_{offer_id} != 'NON_MATCH' and do_suppressionStatus_{offer_id} = 'CLEAN'")
+            sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                    f"from {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash  and " \
+                                    f"a.do_matchStatus_{offer_id} != 'NON_MATCH' and do_suppressionStatus_{offer_id} = 'CLEAN'"
+            offer_logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
             counts_after_filter = counts_before_filter - sf_cursor.rowcount
             mysql_cursor.execute(f"update {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} set filterType='{filter_type}',"
                                  f"filterName='{associate_offer_id}',countsBeforeFilter={counts_before_filter}"
@@ -1224,11 +1226,13 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         if str(channel).upper() != 'INFS':
             def conversions_supp(filter_type, associate_offer_id, current_count):
                 counts_before_filter = current_count
-                sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' "
-                                  f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where "
-                                  f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') "
-                                  f"b where a.profile_id=b.profileid and a.do_matchStatus_{offer_id} != 'NON_MATCH' and"
-                                  f" do_suppressionStatus_{offer_id} = 'CLEAN'")
+                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                        f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                        f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                        f"b where a.profile_id=b.profileid and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                        f" do_suppressionStatus_{offer_id} = 'CLEAN'"
+                offer_logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                      (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
@@ -1240,7 +1244,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         #Sub offers suppression
 
         if sub_offers_list is not None:
-            for sub_offer_id in ','.split(sub_offers_list):
+            for sub_offer_id in sub_offers_list.split(','):
                 current_count = cake_supp("SubOffer_Cake_Suppression",sub_offer_id, f"{channel}_OFFER_MD5_{sub_offer_id}", current_count)
                 if str(channel).upper() != 'INFS':
                     current_count = conversions_supp("SubOffer_Cake_Converters", sub_offer_id, current_count)
