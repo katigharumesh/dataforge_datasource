@@ -317,7 +317,7 @@ def main(supp_request_id, run_number, schedule_time=None, notification_mails="")
             main_logger.info("Request offers processing is initiated.")
             offers_list = str(filter_details['offerSuppression']).split(',')
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
-                futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, mysql_cursor, main_request_table, current_count) for offer in offers_list]
+                futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, main_request_table, current_count) for offer in offers_list]
                 for future in concurrent.futures.as_completed(futures):
                     main_logger.info("Request offers processing is completed.")
 

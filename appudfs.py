@@ -864,7 +864,7 @@ def create_main_input_source(sources_loaded, main_request_details):
             filter_name = 'File level duplicates suppression'
         else:
             if feed_type == 'F':
-                join_fields = 'a.email_id=b.email_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
+                join_fields = 'a.email_id=b.email_id and a.list_id=b.list_id'
             if feed_type == 'T':
                 join_fields = 'a.email_id=b.email_id'
             filter_name = 'Across files duplicates suppression'
@@ -1067,7 +1067,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 filter_name = source_table
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM ({source_table}) b WHERE "
                 sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
-                sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
+            sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
             if type_of_request == "SUPPRESS_FILTER":
                 sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
             logger.info(f"Executing query: {sf_update_table_query}")
@@ -1097,7 +1097,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             sf_conn.close()
 
 
-def offer_download_and_suppression(offer_id, main_request_details, filter_details, mysql_cursor, main_request_table, current_count):
+def offer_download_and_suppression(offer_id, main_request_details, filter_details, main_request_table, current_count):
     try:
         request_id = main_request_details['id']
         schedule_id = main_request_details['ScheduleId']
@@ -1109,6 +1109,10 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                     log_file_path=f"{request_offer_log_path}/",
                                     log_to_stdout=True)
         offer_logger.info(f"Processing started for offerid: {offer_id}")
+        offer_logger.info(f"Acquiring mysql connection")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        offer_logger.info(f"Mysql connection acquired successfully...")
         offer_logger.info(f"Inserting offer: {offer_id} into {SUPPRESSION_REQUEST_OFFERS_TABLE} Table. ")
         mysql_cursor.execute(INSERT_REQUEST_OFFERS,(request_id, schedule_id, run_number, offer_id))
         offer_script_exe = f'{OFFER_PROCESSING_SCRIPT} "{request_id}" "{offer_id}" "{channel}" "pid" "DATAOPS" "{schedule_id}" "{run_number}">>{request_offer_log_path}/{offer_id}.log 2>>{request_offer_log_path}/{offer_id}.log'
@@ -1140,8 +1144,10 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
             if type == 'Match':
                 is_first_file = True
                 column_to_update = f'do_matchStatus_{offer_id}'
+                default_value = 'NON_MATCH'
             elif type == 'Suppression':
                 column_to_update = f'do_suppressionStatus_{offer_id}'
+                default_value = 'CLEAN'
             for table in tables_list:
                 associate_offer_id = table['OFFER_ID']
                 static_file_table = table['TABLE_NAME']
@@ -1150,9 +1156,10 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 insert_count = table['INSERT_COUNT']
 
                 sf_update_table_query = f"update {main_request_table} a set {column_to_update} = '{static_file_table}' " \
-                                        f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where a.EMAIL_MD5 = b.md5hash"
+                                        f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where" \
+                                        f" a.EMAIL_MD5 = b.md5hash and {column_to_update} = {default_value}"
                 if type == "Suppression":
-                    sf_update_table_query += f" AND a.do_{offer_id} != 'NON_MATCH' "
+                    sf_update_table_query += f" AND a.do_matchStatus_{offer_id} != 'NON_MATCH' "
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 if type == 'Match':
@@ -1200,7 +1207,8 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         def cake_supp(filter_type, associate_offer_id, supp_table, current_count):
             counts_before_filter = current_count
             sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' from"
-                              f" {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash")
+                              f" {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash  and "
+                              f"a.do_matchStatus_{offer_id} != 'NON_MATCH' and do_suppressionStatus_{offer_id} = 'CLEAN'")
             counts_after_filter = counts_before_filter - sf_cursor.rowcount
             mysql_cursor.execute(f"update {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} set filterType='{filter_type}',"
                                  f"filterName='{associate_offer_id}',countsBeforeFilter={counts_before_filter}"
@@ -1219,7 +1227,8 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 sf_cursor.execute(f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' "
                                   f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where "
                                   f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') "
-                                  f"b where a.profile_id=b.profileid")
+                                  f"b where a.profile_id=b.profileid and a.do_matchStatus_{offer_id} != 'NON_MATCH' and"
+                                  f" do_suppressionStatus_{offer_id} = 'CLEAN'")
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                      (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
@@ -1247,6 +1256,9 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysql_cursor.close()
+            mysql_conn.close()
 
 
 # adding code for suppression methods
