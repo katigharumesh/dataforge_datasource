@@ -139,7 +139,10 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
         channel_file_type = 'S'
         channel_filter_name = 'Channel_File_Suppression'
         match_or_filter_file_sources_loaded = filter_sources_loaded
-    match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+    if filter_details[key_to_fetch] is not None:
+        match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+    else:
+        match_or_filter_source_details = []
     #match_or_filter_file_sources_loaded =[]
     sorted_match_or_filter_sources_loaded = []
     if len(match_or_filter_source_details) == 0 and channel_level_filter == 0:
