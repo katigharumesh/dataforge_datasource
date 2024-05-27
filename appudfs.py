@@ -134,7 +134,7 @@ def load_input_source(type_of_request, source, main_request_details):
             sf_conn.close()
 
 
-def create_main_datasource(sources_loaded, main_request_details):
+def create_main_datasource(sources_loaded, main_request_details, logger):
     try:
         data_source_id = main_request_details['id']
         data_source_name = main_request_details['name']
@@ -152,31 +152,36 @@ def create_main_datasource(sources_loaded, main_request_details):
         elif data_processing_type == 'M':
             sf_data_source = f' union select {filter_match_fields} from '.join(sources_loaded)
         else:
-            print(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
+            logger.info(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
             raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
+        logger.info("Acquiring Snowflake Connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
+        logger.info("Snowflake connection established Successfully.")
         main_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number)
         temp_datasource_table = MAIN_DATASET_TABLE_PREFIX + str(data_source_id) + '_' + str(run_number) + "_TEMP"
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select distinct {filter_match_fields} from {sf_data_source}"
-        print(f"Main datasource preparation query: {main_datasource_query}")
+        logger.info(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_datasource_table} set email_id=lower(trim(email_id))")
             isps_filter = str(isps).replace(",","','")
+            logger.info("ISP filtration process initiated..")
             sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
+                logger.info("Adding column email_md5 if not available...")
                 sf_cursor.execute(f"alter table {temp_datasource_table} add column email_md5 varchar as md5(email_id)")
         sf_cursor.execute(f"alter table {temp_datasource_table} add column do_inputSource varchar default '{data_source_name}'")
         sf_cursor.execute(f"drop table if exists {main_datasource_table}")
         sf_cursor.execute(f"alter table {temp_datasource_table} rename to {main_datasource_table}")
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
         record_count = sf_cursor.fetchone()[0]
+        logger.info(f"Final table : {main_datasource_table} Count : {record_count}")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('C', record_count, '', data_source_id, run_number))
+        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('C', record_count, '', data_source_id, run_number))
     except Exception as e:
-        print(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
+        logger.error(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} ")
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
