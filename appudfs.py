@@ -97,7 +97,7 @@ def load_input_source(type_of_request, source, main_request_details):
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
                                                  f"as select {main_request_details['FilterMatchFields']} " \
                                                  f"from {sf_data_source} where {' and '.join(where_conditions)} "
-                print("Source table preparation query: " + source_table_preparation_query)
+                consumer_logger.info("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
                 if touch_filter:
                     sf_cursor.execute(
@@ -123,8 +123,8 @@ def load_input_source(type_of_request, source, main_request_details):
             raise Exception("Unknown source_type selected")
 
     except Exception as e:
-        print(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred: Please look into this. {str(e)}")
+        consumer_logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred: Please look into this. {str(e)}"+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -182,7 +182,7 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('C', record_count, '', data_source_id, run_number))
     except Exception as e:
         logger.error(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while creating main_datasource. {str(e)} ")
+        raise Exception(f"Exception occurred while creating main_datasource. {str(e)} "+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -397,16 +397,19 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         #consumer_logger.info(f"Executing query: {RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id))}")
         #mysql_cursor.execute(RUN_NUMBER_QUERY.replace('REQUEST_ID', str(mapping_id)))
 
-        last_successful_run_number = 1
+        last_successful_run_number = -1
         # mysql_cursor.execute(last_successful_run_number_query)
 
         last_iteration_files_details = []
         if run_number != 1:
-            mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id),))
-            last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-            mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
-            last_iteration_files_details = mysql_cursor.fetchall()
-            consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
+            try:
+                mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id),))
+                last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
+                mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
+                last_iteration_files_details = mysql_cursor.fetchall()
+                consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
+            except Exception as e :
+                consumer_logger.error("Exception occurred while fetching last successful iteration details... Seems like no run got completed now...")
             # [filename,size,modified_time,count]
         table_name = source_table
         consumer_logger.info(f"Table name for this DataSource is: {table_name}")
@@ -414,7 +417,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection acquired successfully")
-        if run_number == 1:
+        if run_number == 1 or last_successful_run_number == -1  or last_iteration_files_details == []:
             field_delimiter = input_data_dict['delimiter']
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
             sf_create_table_query = f"create or replace transient table  {table_name}  ( "
@@ -431,7 +434,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
             files_list = input_data_dict['filePath'].split(",")
             consumer_logger.info("File List: "+str(files_list))
             if len(files_list) >= 1 :
-                consumer_logger.info("There are many files with comma separated...")
+                consumer_logger.info("There are one or more files with comma separated...")
                 for file in files_list:
                     file_details_dict = process_single_file(mapping_id, temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
@@ -512,7 +515,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
-        if run_number != 1:
+        if run_number != 1 and last_iteration_files_details != []:
             last_iteration_file_names_list = [i["filename"] for i in last_iteration_files_details]
             consumer_logger.info(f"last iteration files are {str(last_iteration_file_names_list)}")
             if file in last_iteration_file_names_list:
@@ -612,7 +615,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         mysqlcur = mysql_conn.cursor()
         mysqlcur.execute("set time_zone='UTC';")
         requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
-                f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone from {SCHEDULE_TABLE} where status='I' " \
+                f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {SCHEDULE_TABLE} where status='I' " \
                 f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
         logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
         mysqlcur.execute(requestquery)
@@ -621,10 +624,12 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         for request in requestList:
             recurrenceType = request[3]
             id = request[0]
-            startDate = request[4]
+            startDate = str(request[4])
             endDate = str(request[5])
             sendAt = str(request[8])
             timezone = str(request[9])
+            sendon=request[10]
+            monthDay=request[11]
             if request[6] is not None:
                 try:
                     excludeDates = request[6].split(',')
@@ -632,16 +637,54 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     excludeDates = request[6].split()
             else:
                 excludeDates = None
+
+
+            if sendon is not None:
+                try:
+                    sendon=sendon.split(',')
+                except:
+                    sendon=sendon.split()
+            else:
+                sendon=None
             #scheduleNextquery = f"update {schedule_table} set status='W',runnumber=runnumber+1 where id={id}"
             #logger.info(f"Updating schedule status and runnumber, query :: {scheduleNextquery}")
             #mysqlcur.execute(scheduleNextquery)
 
             if (recurrenceType is not None and recurrenceType == 'H'):
+                utcTime = ''
+                current_date = datetime.now().date()
+                if timezone == 'IST':
+                    ist = pytz.timezone('Asia/Kolkata')
+                    ist_time_format = "%I:%M %p"
+                    istTime = datetime.strptime(sendAt, ist_time_format)
+                    istTime = datetime.combine(current_date, istTime.time())
+                    istTime = ist.localize(istTime)
+                    utcTime = istTime.astimezone(pytz.utc).strftime("%H:%M:%S")
+                elif timezone == 'EST':
+                    est = pytz.timezone('America/New_York')
+                    est_time_format = "%I:%M %p"
+                    estTime = datetime.strptime(sendAt, est_time_format)
+                    estTime = datetime.combine(current_date, estTime.time())
+                    estTime = est.localize(estTime)
+                    utcTime = estTime.astimezone(pytz.utc).strftime("%H:%M:%S")
+
+                current_date=str(current_date) + ' ' + utcTime
+                dcurrent_date = datetime.strptime(current_date,'%Y-%m-%d %H:%M:%S')
+                dendDate=datetime.strptime(endDate,'%Y-%m-%d').date()
+                dendDate=dendDate+timedelta(days=1)
+                #nextscheduleDatequery=f"select nextScheduleDue from {schedule_table} where id={id}"
+                #mysqlcur.execute(nextscheduleDatequery)
+                #nextscheduleDate=datetime.strptime(str(mysqlcur.fetchone()[0]),'%Y-%m-%d %H:%M:%S')
+
+                dcurrent_date = datetime.strptime(current_date,'%Y-%m-%d %H:%M:%S') + timedelta(hours=1)
+                while dcurrent_date<datetime.utcnow():
+                    dcurrent_date=dcurrent_date+timedelta(hours=1)
+
                 nextschedulequery = f"update {schedule_table} set nextScheduleDue=" \
-                                    f"case when date_add(now(),INTERVAL 1 HOUR) < '{endDate}' Then date_add(now(),Interval 60 - minute(now()))" \
-                                    f"else '{endDate}' end,status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                                    f"case when date(nextScheduleDue) <= '{endDate}' Then %s" \
+                                    f"else %s end,status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                 logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
-                mysqlcur.execute(nextschedulequery)
+                mysqlcur.execute(nextschedulequery,(dcurrent_date,dendDate))
             if (recurrenceType is not None and recurrenceType == 'D'):
                 utcTime = ''
                 current_date = datetime.now().date()
@@ -671,7 +714,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     nextscheduleDuep = str(nextscheduledatep) + ' ' + utcTime
                     # print(nextscheduleDuep)
 
-                    nextschedulequery=f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    nextschedulequery=f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery,(nextscheduledatep,nextscheduleDuep))
                 else:
@@ -680,7 +723,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
 
                     #nextscheduledatep = datetime.now().date() + timedelta(days=1)
                     nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                        f"if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                                        f"if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep))
 
@@ -702,6 +745,46 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     estTime = est.localize(estTime)
                     utcTime = estTime.astimezone(pytz.utc).strftime("%H:%M:%S")
 
+
+                if sendon is not None:
+                    weekDaysdict = {
+                        'Sunday': 'SU', 'Monday': 'M', 'Tuesday': 'T', 'Wednesday': 'W',
+                        'Thursday': 'TH', 'Friday': 'F', 'Saturday': 'S'
+                    }
+                    if excludeDates is None:
+                        excludeDates=[]
+
+                    utcdate = datetime.utcnow().date() + timedelta(days=1)
+                    date_format = '%Y-%m-%d'
+                    dstartDate = datetime.strptime(startDate, date_format).date()
+                    dendDate = datetime.strptime(endDate, date_format).date()
+                    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                    if utcdate <= dendDate:
+                        while utcdate <= dendDate:
+                            if utcdate >= dstartDate and utcdate not in excludeDates:
+                                day_week = utcdate.weekday()
+                                day = days[day_week]
+                                if day in weekDaysdict and weekDaysdict[day] in sendon:
+                                    if utcTime != '':
+                                        nextscheduleDuep = str(utcdate) + ' ' + utcTime
+                                        #print(nextscheduleDuep)
+                                        nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
+                                            f"if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
+                                        logger.info(f"nextschedulequery ::: {nextschedulequery}")
+                                        mysqlcur.execute(nextschedulequery, (utcdate,nextscheduleDuep))
+
+                                        break
+                                utcdate += timedelta(days=1)
+                            else:
+                                utcdate += timedelta(days=1)
+                    else:
+
+                        updatequery=f"update {SCHEDULE_TABLE} set status='C',nextscheduleDue=endDate where id={id}"
+                        logger.info(f"updatequery:: {updatequery}")
+                        mysqlcur.execute(updatequery)
+                else:
+                    logger.info("Week days should be selected")
+                '''
                 if excludeDates is not None:
                     #timestamp = str(datetime.utcnow()).split(' ')[1]
                     nextscheduledate = datetime.utcnow().date() + timedelta(days=7)
@@ -709,7 +792,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                         nextscheduledate += timedelta(days=7)
 
                     nextscheduleDuep = str(nextscheduledate) + ' ' + utcTime
-                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep, nextscheduleDuep))
                 else:
@@ -717,11 +800,11 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     nextscheduleDuep = str(nextscheduledatep)+ ' ' + utcTime
 
                     nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                        f"if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                                        f"if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
 
                     # logger.info(nextschedulequery)
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
-                    mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep))
+                    mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep))'''
 
             if (recurrenceType is not None and recurrenceType == 'M'):
                 utcTime = ''
@@ -742,24 +825,24 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     utcTime = estTime.astimezone(pytz.utc).strftime("%H:%M:%S")
                 if excludeDates is not None:
                     timestamp = str(datetime.utcnow()).split(' ')[1]
-                    nextscheduledate = datetime.utcnow().date() + timedelta(months=1)
+                    nextscheduledate = datetime.utcnow().date() + relativedelta(months=1)
                     while nextscheduledate in excludeDates:
-                        nextscheduledate += timedelta(months=1)
+                        nextscheduledate += relativedelta(months=1)
 
                     nextscheduleDuep = str(nextscheduledate) + ' ' + utcTime
-                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                    nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue = if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"nextschedulequery :: Daily :: {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep))
                 else:
-                    nextscheduledatep = datetime.utcnow().date() + timedelta(months=1)
-                    nextscheduleDuep=str(nextscheduledate) + ' ' + utcTime
+                    nextscheduledatep = datetime.utcnow().date() + relativedelta(months=1)
+                    nextscheduleDuep=str(nextscheduledatep) + ' ' + utcTime
                     nextschedulequery = f"update {SCHEDULE_TABLE} set nextScheduleDue=" \
-                                    f"if(%s<=endDate,%s,endDate),status=if(nextScheduleDue>=endDate,'C','W') where id={id}"
+                                    f"if(%s<=endDate,%s,endDate),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep))
 
-            if recurrenceType is None and request_status == 'C':
-                update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
+            if recurrenceType is None :
+                update_schedule_status = f"update {SCHEDULE_TABLE} set status = '{request_status}' where id={id}"
                 logger.info(f"Updating Schedule table status for successful execution of adhoc type request, query : {update_schedule_status}")
                 mysqlcur.execute(update_schedule_status)
             logger.info("Successfully updated schedule table details")
@@ -770,6 +853,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         if 'connection' in locals() and mysql_conn.is_connected():
             mysqlcur.close()
             mysql_conn.close()
+
 
 
 
@@ -790,8 +874,8 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
             raise Exception("Given dataSource is not actively working. So making this request error.")
 
     except Exception as e:
-        logger.error("Exception occurred. Please look into this .... {str(e)}")
-        raise Exception(str(e))
+        logger.error("Exception occurred. Please look into this .... {str(e)}"+ str(traceback.format_exc()))
+        raise Exception(str(e)+ str(traceback.format_exc()))
 
 def create_main_input_source(sources_loaded, main_request_details, logger):
     try:
@@ -892,7 +976,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
 
     except Exception as e:
         logger.error(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while creating main input source table. {str(e)} ")
+        raise Exception(f"Exception occurred while creating main input source table. {str(e)} "+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -916,7 +1000,7 @@ def isps_filteration(current_count, main_request_table, isps, logger, mysql_curs
         return counts_after_filter
     except Exception as e:
         print(f"Exception occurred while performing isps filteration. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while performing isps filteration. {str(e)} ")
+        raise Exception(f"Exception occurred while performing isps filteration. {str(e)} "+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -954,8 +1038,8 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         logger.info("Fields appended successfully...")
         return result_table
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into it... {str(e)}")
-        raise Exception(str(e))
+        logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
+        raise Exception(str(e)+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -979,8 +1063,8 @@ def update_default_values(type_of_request, main_request_table, logger):
         logger.info("Fields appended successfully...")
         return main_request_table
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into it... {str(e)}")
-        raise Exception(str(e))
+        logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
+        raise Exception(str(e)+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1095,7 +1179,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         return counts_after_filter
     except Exception as e:
         logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(str(e))
+        raise Exception(str(e)+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1369,7 +1453,7 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
         else:
             return True, result, current_count
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
         return False, str(e), 0
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
@@ -1548,7 +1632,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         else:
             return True, result, current_count
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into it... {str(e)}")
+        logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
         return False, str(e), 0
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
@@ -1618,7 +1702,7 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
         return counts_after_filter
     except Exception as e:
         print(f"Exception occurred while performing {filter_type}. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while performing {filter_type}. {str(e)} ")
+        raise Exception(f"Exception occurred while performing {filter_type}. {str(e)} "+ str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
