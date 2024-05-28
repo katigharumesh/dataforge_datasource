@@ -66,20 +66,21 @@ def load_input_source(type_of_request, source, main_request_details):
                     sf_data_source = "(" + sf_query + ")"
                 where_conditions = []
                 for filter in input_data_dict:
-                    if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
-                        filter['value'] = f"%{filter['value']}%"
-                    if filter['dataType'] != 'number' and filter['searchType'] != '>=':
-                        filter['value'] = "'" + filter['value'] + "'"
-                    if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
-                        filter['value'] = "(" + filter['value'] + ")"
-                    elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
-                        filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
-                    if filter['searchType'] == 'between' and filter['dataType'] != 'number':
-                        filter['value'] = filter['value'].replace(',', '\' and \'')
-                    elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
-                        filter['value'] = filter['value'].replace(',', ' and ')
-                    if filter['searchType'] == '>=':
-                        filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                    if dict(filter).__len__() != 1:
+                        if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
+                            filter['value'] = f"%{filter['value']}%"
+                        if filter['dataType'] != 'number' and filter['searchType'] != '>=':
+                            filter['value'] = "'" + filter['value'] + "'"
+                        if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
+                            filter['value'] = "(" + filter['value'] + ")"
+                        elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
+                            filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
+                        if filter['searchType'] == 'between' and filter['dataType'] != 'number':
+                            filter['value'] = filter['value'].replace(',', '\' and \'')
+                        elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
+                            filter['value'] = filter['value'].replace(',', ' and ')
+                        if filter['searchType'] == '>=':
+                            filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
                     touch_filter = False
                     if 'touchCount' in filter:
