@@ -793,7 +793,7 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         logger.error("Exception occurred. Please look into this .... {str(e)}")
         raise Exception(str(e))
 
-def create_main_input_source(sources_loaded, main_request_details):
+def create_main_input_source(sources_loaded, main_request_details, logger):
     try:
         request_id = main_request_details['id']
         channel_name = main_request_details['channelName']
@@ -820,7 +820,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         main_input_source_query = f"create or replace transient table" \
                                   f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table}" \
                                   f" as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(generalized_sources)}"
-        print(f"Main input source preparation query: {main_input_source_query}")
+        logger.info(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_input_source_table} set email_id=lower(trim(email_id))")
@@ -833,7 +833,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        print(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
+        logger.info(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
         if feed_type != 'A':
@@ -875,7 +875,7 @@ def create_main_input_source(sources_loaded, main_request_details):
             filter_name = 'Across files duplicates suppression'
         for source in sources_loaded:
             input_source_mapping_id = source[1]
-            print(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}  where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
+            logger.info(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}  where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
             sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
                               f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when "
                               f"not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
@@ -891,7 +891,7 @@ def create_main_input_source(sources_loaded, main_request_details):
         return counts_after_filter, main_input_source_table
 
     except Exception as e:
-        print(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
+        logger.error(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main input source table. {str(e)} ")
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
