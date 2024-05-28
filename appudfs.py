@@ -92,8 +92,8 @@ def load_input_source(type_of_request, source, main_request_details):
                         else:
                             grouping_fields = 'email_id'
                             join_fields = 'a.email_id=b.email_id'
-                    where_conditions.append(
-                        f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
+                    if dict(filter).__len__() != 1:
+                        where_conditions.append(f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
                                                  f"as select {main_request_details['FilterMatchFields']} " \
