@@ -460,10 +460,10 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                     to_delete.append(file['filename'])
             if len(to_delete) != 0:
                 to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
-                print(f"Older files to be deleted: {to_delete_mysql_formatted}")
+                consumer_logger.info(f"Older files to be deleted: {to_delete_mysql_formatted}")
                 sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY,(table_name, to_delete_mysql_formatted))
             else:
-                print("No older files to delete.")
+                consumer_logger.info("No older files to delete.")
 
             file_details_list = []
             consumer_logger.info("First time/existing files processing..")

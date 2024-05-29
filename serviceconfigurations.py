@@ -132,7 +132,7 @@ FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 SUBJECT = "PROXY TESTING REPORT"
 
-SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where filename in (%s)"
+SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where DO_INPUTSOURCE in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
 LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
 
