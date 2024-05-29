@@ -1174,10 +1174,16 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                     counts_before_filter = 0
                     is_first_match_filter = False
                 counts_after_filter = counts_before_filter + sf_cursor.rowcount
-                filter_type = 'Match'
+                if filter_source[2] == 'Channel_File_Match':
+                    filter_type = 'Channel_File_Match'
+                else:
+                    filter_type = 'Match'
             elif type_of_request == "SUPPRESS_FILTER":
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
-                filter_type = 'Suppression'
+                if filter_source[2] == 'Channel_File_Suppression':
+                    filter_type = 'Channel_File_Suppression'
+                else:
+                    filter_type = 'Suppression'
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
                                   main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
@@ -1194,7 +1200,8 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             sf_conn.close()
 
 
-def offer_download_and_suppression(offer_id, main_request_details, filter_details, main_request_table, current_count):
+def offer_download_and_suppression(offer_id, main_request_details, filter_details, main_request_table, current_count,
+                                   affiliate_channel, offer_table_prefix):
     try:
         request_id = main_request_details['id']
         schedule_id = main_request_details['ScheduleId']
@@ -1212,7 +1219,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         offer_logger.info(f"Mysql connection acquired successfully...")
         offer_logger.info(f"Inserting offer: {offer_id} into {SUPPRESSION_REQUEST_OFFERS_TABLE} Table. ")
         mysql_cursor.execute(INSERT_REQUEST_OFFERS,(request_id, schedule_id, run_number, offer_id))
-        offer_script_exe = f'{OFFER_PROCESSING_SCRIPT} "{request_id}" "{offer_id}" "{channel}" "pid" "DATAOPS" "{schedule_id}" "{run_number}">>{request_offer_log_path}/{offer_id}.log 2>>{request_offer_log_path}/{offer_id}.log'
+        offer_script_exe = f'{OFFER_PROCESSING_SCRIPT} "{request_id}" "{offer_id}" "{affiliate_channel}" "pid" "DATAOPS" "{schedule_id}" "{run_number}">>{request_offer_log_path}/{offer_id}.log 2>>{request_offer_log_path}/{offer_id}.log'
         exit_code = os.system(offer_script_exe)
         if exit_code == 0:
             offer_logger.info(f"Offer downloading process got completed for offerid: {offer_id}")
@@ -1226,9 +1233,12 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         offer_logger.info("Snowflake connection acquired successfully...")
         sf_cursor.execute(f"alter table {main_request_table} add column do_matchStatus_{offer_id} varchar default "
                           f"'NON_MATCH', do_suppressionStatus_{offer_id} varchar default 'CLEAN' ")
+        offer_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
         offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
         offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
-        offer_files_db_cursor.execute(f"select group_concat(SUB_OFFER_ID) as sub_offers_list from OFFER_SUBOFFERS where CHANNEL='{channel}' and OFFER_ID={offer_id} and STATUS='A'")
+        offer_logger.info(f"Channel/Offer static files DB mysql connection acquired successfully...")
+        offer_files_db_cursor.execute(f"select group_concat(SUB_OFFER_ID) as sub_offers_list from OFFER_SUBOFFERS "
+                                      f"where CHANNEL='{affiliate_channel}' and OFFER_ID={offer_id} and STATUS='A'")
         sub_offers_list = offer_files_db_cursor.fetchone()['sub_offers_list']
         if sub_offers_list is not None:
             offers_list = f'{offer_id},{sub_offers_list}'
@@ -1266,7 +1276,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                     counts_after_filter = counts_before_filter + sf_cursor.rowcount
                 elif type == "Suppression":
                     counts_after_filter = counts_before_filter - sf_cursor.rowcount
-                if offer_id == associate_offer_id:
+                if str(offer_id) == str(associate_offer_id):
                     filter_type = f"MainOffer_File_{type}"
                 else:
                     filter_type = f"SubOffer_File_{type}"
@@ -1316,7 +1326,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                  f"filterType='TEMPORARY' and runNumber = {run_number}")
             return counts_after_filter
 
-        current_count = cake_supp("MainOffer_Cake_Suppression", offer_id, f"{channel}_OFFER_MD5_{offer_id}", current_count)
+        current_count = cake_supp("MainOffer_Cake_Suppression", offer_id, f"{affiliate_channel}_{offer_table_prefix}_{offer_id}", current_count)
 
         #Conversions suppression
 
@@ -1342,7 +1352,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
 
         if sub_offers_list is not None:
             for sub_offer_id in sub_offers_list.split(','):
-                current_count = cake_supp("SubOffer_Cake_Suppression",sub_offer_id, f"{channel}_OFFER_MD5_{sub_offer_id}", current_count)
+                current_count = cake_supp("SubOffer_Cake_Suppression",sub_offer_id, f"{affiliate_channel}_{offer_table_prefix}_{sub_offer_id}", current_count)
                 if str(channel).upper() != 'INFS':
                     current_count = conversions_supp("SubOffer_Cake_Converters", sub_offer_id, current_count)
 
@@ -1350,6 +1360,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
     except Exception as e:
         offer_logger.info(f"Exception occurred: At offer_download_and_suppression for requestid: {request_id}, "
                          f"runNumber: {run_number}, offerid: {offer_id}. Please look into this. {str(e)}" + str(traceback.format_exc()))
+        sf_cursor.execute(f"alter table {main_request_table} drop column do_matchStatus_{offer_id} , do_suppressionStatus_{offer_id} ")
     finally:
         if 'connection' in locals() and offer_files_db_conn.is_connected():
             offer_files_db_cursor.close()

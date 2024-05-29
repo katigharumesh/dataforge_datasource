@@ -168,6 +168,8 @@ class Suppression_Request:
                                             f"(select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where " \
                                             f"CHANNEL='{main_request_details['channelName']}' and PROCESS_TYPE='C' and STATUS='A')")
             sorted_match_or_filter_sources_loaded += channel_files_db_cursor.fetchall()
+            channel_files_db_cursor.close()
+            channel_files_db_conn.close()
         if len(match_or_filter_source_details) != 0:
             match_or_filter_file_source_details = list(match_or_filter_source_details['FileSource'])
             match_or_filter_file_source_queue = queue.Queue()
@@ -326,11 +328,24 @@ class Suppression_Request:
 
 
             #Offer downloading and suppression
-            if filter_details['offerSuppression'] is not None:
+            main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
+            offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+            offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
+            main_logger.info(f"Channel/Offer static files DB mysql connection acquired successfully...")
+            offer_files_db_cursor.execute(FETCH_AFFILIATE_CHANNEL_VALUE,(main_request_details['channelName']))
+            affiliate_channel_details = offer_files_db_cursor.fetchone()
+            affiliate_channel = affiliate_channel_details['channelvalue']
+            offer_table_prefix = affiliate_channel_details['table_prefix']
+            main_logger.info(f"Closing Channel/Offer static files DB mysql connection")
+            offer_files_db_cursor.close()
+            offer_files_db_conn.close()
+            if main_request_details['offerSuppression'] is not None:
                 main_logger.info("Request offers processing is initiated.")
-                offers_list = str(filter_details['offerSuppression']).split(',')
+                offers_list = str(main_request_details['offerSuppression']).split(',')
                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
-                    futures = [executor.submit(offer_download_and_suppression, offer, main_request_details, filter_details, main_request_table, current_count) for offer in offers_list]
+                    futures = [executor.submit(offer_download_and_suppression, offer, main_request_details,
+                                               filter_details, main_request_table, current_count, affiliate_channel,
+                                               offer_table_prefix) for offer in offers_list]
                     for future in concurrent.futures.as_completed(futures):
                         main_logger.info("Request offers processing is completed.")
 

@@ -162,7 +162,8 @@ UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requ
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
-                             f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,a.filterId from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
+                             f'a.filterId,a.offerSuppression from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
@@ -179,7 +180,7 @@ INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETA
                                           f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount )" \
                                           f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 
-FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressionMethod,offerSuppression," \
+FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressionMethod," \
                                "purdueSuppression,stateSuppression,zipSuppression,filterDataSources," \
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
@@ -191,6 +192,7 @@ MAX_OFFER_THREADS_COUNT = 2
 
 OFFER_PROCESSING_SCRIPT = f"/usr/bin/sh -x /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_consumer.sh "
 
+CHANNEL_AFFILIATE_TABLE = "CHANNEL_LIST"
 CHANNEL_OFFER_FILES_SF_SCHEMA = "LIST_PROCESSING_UAT"
 OFFER_SUPP_TABLES_SF_SCHEMA = "LIST_PROCESSING_UAT"
 
@@ -202,6 +204,8 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
     'autocommit': True,
     'allow_local_infile': True
 }
+
+FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper('%s')"
 
 POSTAL_TABLE = "INFS_LPT.POSTAL_DATA"
 PROFILE_TABLE = ""
