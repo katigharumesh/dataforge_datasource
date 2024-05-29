@@ -849,8 +849,8 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep,dendDate))
 
-            if recurrenceType is None and request_status == 'C':
-                update_schedule_status = f"update {SCHEDULE_TABLE} set status = 'C' where id={id}"
+            if recurrenceType is None :
+                update_schedule_status = f"update {SCHEDULE_TABLE} set status = '{request_status}' where id={id}"
                 logger.info(f"Updating Schedule table status for successful execution of adhoc type request, query : {update_schedule_status}")
                 mysqlcur.execute(update_schedule_status)
             logger.info("Successfully updated schedule table details")
