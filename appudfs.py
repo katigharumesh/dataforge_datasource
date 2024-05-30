@@ -447,6 +447,8 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                     error_desc = file_details_dict['error_msg']
                     mysql_cursor.execute(INSERT_FILE_DETAILS, (schedule_id, run_number, mapping_id, count, fileName, 'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
+                    if file_status == 'E':
+                        raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
                 raise Exception("There are no files specified.. Kindly check the request..")
@@ -481,6 +483,8 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                     schedule_id, run_number, mapping_id, count, fileName,
                     'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
+                if file_status == 'E':
+                    raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
 
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
