@@ -928,23 +928,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         logger.info(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
-        if feed_type != 'A':
-            if feed_type == 'F':
-                sf_cursor.execute(f"delete from {main_input_source_table} where list_id not in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})")
-                supp_count = sf_cursor.rowcount
-                filter_name = 'Third Party listids suppression'
-            elif feed_type == 'T':
-                sf_cursor.execute(f"delete from {main_input_source_table} where list_id in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})")
-                supp_count = sf_cursor.rowcount
-                filter_name = 'First Party listids suppression'
-            else:
-                raise Exception("Unknown feed_type has been configured. Please look into this...")
-            counts_after_filter = counts_before_filter - supp_count
-            mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
-                                 (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
-                                  , filter_name, counts_before_filter, counts_after_filter, 0, 0))
-            counts_before_filter = counts_after_filter
-
+#Removing duplicates based on feed type
         sf_cursor.execute(f"create or replace transient table {temp_input_source_table} like {main_input_source_table}")
         sf_cursor.execute(f"select LISTAGG(COLUMN_NAME,',') WITHIN GROUP (ORDER BY COLUMN_NAME) from information_schema.COLUMNS "
                           f"where table_name='{temp_input_source_table}'")
@@ -952,10 +936,13 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         sf_cursor.execute(f"select LISTAGG(CONCAT('b.',COLUMN_NAME),',') WITHIN GROUP (ORDER BY COLUMN_NAME) from "
                           f"information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         aliased_insert_fields = sf_cursor.fetchone()[0]
+        sf_cursor.execute(f"update {main_input_source_table} set list_id = '00000' where list_id is null ")
         if remove_duplicates == 0:
 #Pending Green all feed type
             if feed_type == 'F':
-                join_fields = 'a.email_id=b.email_id and a.list_id=b.list_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
+                join_fields = 'a.email_id = b.email_id and a.list_id = b.list_id and ' \
+                              'a.do_inputSourceMappingId = b.do_inputSourceMappingId and ' \
+                              'a.do_inputSource = b.do_inputSource'
             if feed_type == 'T':
                 join_fields = 'a.email_id=b.email_id and a.do_inputSourceMappingId=b.do_inputSourceMappingId'
             filter_name = 'File level duplicates suppression'
@@ -971,9 +958,10 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             sf_cursor.execute(f"merge into {temp_input_source_table} a using (select * from {main_input_source_table}"
                               f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on {join_fields} when "
                               f"not matched then insert ({insert_fields}) values ({aliased_insert_fields}) ")
+        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default"
+                          f" 'CLEAN', do_matchStatus varchar default 'NON_MATCH', do_feedname varchar default 'Third_Party'")
+        sf_cursor.execute(f"UPDATE {temp_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) FROM {FP_LISTIDS_SF_TABLE} B WHERE A.LIST_ID=B.LISTID")
         sf_cursor.execute(f"drop table {main_input_source_table}")
-        # alter table and add column do_suppression_status with default 'clean'  as value
-        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar default 'CLEAN' , do_matchStatus varchar default 'NON_MATCH' ")
         sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]

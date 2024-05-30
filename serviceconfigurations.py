@@ -163,7 +163,7 @@ UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
                              f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
-                             f'a.filterId,a.offerSuppression from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.filterId,a.offerSuppressionIds from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \

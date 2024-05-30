@@ -339,9 +339,9 @@ class Suppression_Request:
             main_logger.info(f"Closing Channel/Offer static files DB mysql connection")
             offer_files_db_cursor.close()
             offer_files_db_conn.close()
-            if main_request_details['offerSuppression'] is not None:
+            if main_request_details['offerSuppressionIds'] is not None:
                 main_logger.info("Request offers processing is initiated.")
-                offers_list = str(main_request_details['offerSuppression']).split(',')
+                offers_list = str(main_request_details['offerSuppressionIds']).split(',')
                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
                     futures = [executor.submit(offer_download_and_suppression, offer, main_request_details,
                                                filter_details, main_request_table, current_count, affiliate_channel,
