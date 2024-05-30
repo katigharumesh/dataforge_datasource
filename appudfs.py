@@ -83,7 +83,7 @@ def load_input_source(type_of_request, source, main_request_details):
                             filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
                     touch_filter = False
-                    if 'touchCount' in filter:
+                    if 'touchCount' in filter and source_sub_type in ('R', 'D'):
                         touch_filter = True
                         touch_count = filter['touchCount']
                         if main_request_details['feedType'] == 'F':
