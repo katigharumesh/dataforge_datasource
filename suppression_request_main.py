@@ -301,9 +301,10 @@ class Suppression_Request:
             filter_details = mysql_cursor.fetchone()
             main_logger.info(f"Filter details : {str(filter_details)}")
             # Performing isps filtration
-            current_count = isps_filteration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
+            current_count = isps_filtration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
-
+            # Profile non-match filtration
+            current_count = profile_non_match_filtration(current_count, main_request_table, main_logger, mysql_cursor, main_request_details)
 
             # Data Match Selection
             current_count = self.perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)

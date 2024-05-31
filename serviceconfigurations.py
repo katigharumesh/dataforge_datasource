@@ -155,8 +155,10 @@ SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_DETAILED_STATS"
 SUPPRESSION_REQUEST_FILTERS_TABLE = "SUPPRESSION_REQUEST_FILTERS"
 SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
+SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE = "SUPPRESSION_PROFILE_TABLES_LOOKUP"
 
 FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
+OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT_OTEAM"
 
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
@@ -165,6 +167,9 @@ FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.
                              f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
                              f'a.filterId,a.offerSuppressionIds from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
+
+FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
+                              f' where channelName = %s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                             'b.sfAccount,b.sfDatabase,' \

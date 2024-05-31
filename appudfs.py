@@ -915,7 +915,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
 
         main_input_source_query = f"create or replace transient table" \
                                   f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table}" \
-                                  f" as select {filter_match_fields} from {f' intersect select {filter_match_fields} from '.join(generalized_sources)}"
+                                  f" as select distinct {filter_match_fields} from {f' union select {filter_match_fields} from '.join(generalized_sources)}"
         logger.info(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
         if 'email_id' in str(filter_match_fields).lower().split(','):
@@ -923,9 +923,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar")
                 sf_cursor.execute(f"update {temp_input_source_table} set email_md5 = md5(email_id)")
-        sf_cursor.execute(f"drop table if exists {main_input_source_table}")
-        sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
-        sf_cursor.execute(f"select count(1) from {main_input_source_table}")
+        sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
@@ -935,44 +933,55 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
 #Removing duplicates based on feed type
         logger.info(f"Performing deduplication based on feed level and request filter level configured "
                     f"removeDuplicates value: {remove_duplicates}")
-        sf_cursor.execute(f"create or replace transient table {temp_input_source_table} like {main_input_source_table}")
+        sf_cursor.execute(f"create or replace transient table {main_input_source_table} like {temp_input_source_table}")
         sf_cursor.execute(f"select LISTAGG(COLUMN_NAME,',') WITHIN GROUP (ORDER BY COLUMN_NAME) from"
                           f" information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         insert_fields = sf_cursor.fetchone()[0]
         sf_cursor.execute(f"select LISTAGG(CONCAT('b.',COLUMN_NAME),',') WITHIN GROUP (ORDER BY COLUMN_NAME) from "
                           f"information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         aliased_insert_fields = sf_cursor.fetchone()[0]
-        sf_cursor.execute(f"update {main_input_source_table} set list_id = '00000' where list_id is null ")
+        sf_cursor.execute(f"update {temp_input_source_table} set list_id = '00000'  where list_id is null or "
+                          f"list_id='NULL' or list_id='null' or list_id='' ")
         if remove_duplicates == 0:
-            source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId and ' \
-                                     'a.do_inputSource = b.do_inputSource'
-            filter_name = 'File level duplicates suppression'
+            source_join_fields = 'and a.do_inputSource = b.do_inputSource'
+            filter_name = 'Feed and File level duplicates suppression'
         else:
             source_join_fields = ''
-            filter_name = 'Across files duplicates suppression'
+            filter_name = 'Feed and Across files duplicates suppression'
         for source in sources_loaded:
             input_source_mapping_id = source[1]
-            fp_sf_query = f"merge into {temp_input_source_table} a using (select * from {main_input_source_table} " \
-                          f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id in (select " \
-                          f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
-                          f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
-                          f"({insert_fields}) values ({aliased_insert_fields}) "
-            logger.info(f"Executing: {fp_sf_query}")
-            sf_cursor.execute(fp_sf_query)
-            tp_sf_query = f"merge into {temp_input_source_table} a using (select * from {main_input_source_table} " \
-                          f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id not in (select " \
-                          f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
-                          f" {source_join_fields} when not matched then insert " \
-                          f"({insert_fields}) values ({aliased_insert_fields}) "
-            logger.info(f"Executing: {tp_sf_query}")
-            sf_cursor.execute(tp_sf_query)
-        sf_cursor.execute(f"alter table {temp_input_source_table} add column do_suppressionStatus varchar "
-                          f"default 'CLEAN', do_matchStatus varchar default 'NON_MATCH', "
+            if channel_name == 'INFS':
+                fp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table}" \
+                              f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on a.email_id = b.email_id" \
+                              f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
+                              f"({insert_fields}) values ({aliased_insert_fields}) "
+                logger.info(f"Executing: {fp_sf_query}")
+                sf_cursor.execute(fp_sf_query)
+            else:
+                fp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table} " \
+                              f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id in (select " \
+                              f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
+                              f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
+                              f"({insert_fields}) values ({aliased_insert_fields}) "
+                logger.info(f"Executing: {fp_sf_query}")
+                sf_cursor.execute(fp_sf_query)
+                tp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table} " \
+                              f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id not in (select " \
+                              f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
+                              f" {source_join_fields} when not matched then insert " \
+                              f"({insert_fields}) values ({aliased_insert_fields}) "
+                logger.info(f"Executing: {tp_sf_query}")
+                sf_cursor.execute(tp_sf_query)
+        sf_cursor.execute(f"alter table {main_input_source_table} add column do_suppressionStatus varchar default "
+                          f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', do_isDeleted varchar default 'N', "
                           f"do_feedname varchar default 'Third_Party'")
-        sf_cursor.execute(f"UPDATE {temp_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) "
-                          f"FROM {FP_LISTIDS_SF_TABLE} B WHERE A.LIST_ID=B.LISTID")
-        sf_cursor.execute(f"drop table {main_input_source_table}")
-        sf_cursor.execute(f"alter table {temp_input_source_table} rename to {main_input_source_table}")
+        if channel_name == 'INFS':
+            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.ORANGE_LISTID) "
+                              f"FROM {OTEAM_FP_LISTIDS_SF_TABLE} B WHERE A.LIST_ID=B.ORANGE_LISTID")
+        else:
+            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) "
+                              f"FROM {FP_LISTIDS_SF_TABLE} B WHERE A.LIST_ID=B.LISTID")
+        sf_cursor.execute(f"drop table {temp_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
@@ -981,7 +990,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         return counts_after_filter, main_input_source_table
     except Exception as e:
         logger.error(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while creating main input source table. {str(e)} "+ str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -990,27 +999,56 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             sf_cursor.close()
             sf_conn.close()
 
-def isps_filteration(current_count, main_request_table, isps, logger, mysql_cursor, main_request_details):
+def isps_filtration(current_count, main_request_table, isps, logger, mysql_cursor, main_request_details):
     try:
         counts_before_filter = current_count
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         isps_filter = str(isps).replace(",", "','")
-        isps_filteration_query = f"delete from {main_request_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')"
-        logger.info(f"Deleting non-configured isps records from {main_request_table}. Executing Query: {isps_filteration_query}")
-        sf_cursor.execute(isps_filteration_query)
+        isps_filtration_query = f"update {main_request_table} set do_suppressionStatus = 'ISP_NON_MATCH' where " \
+                                f"split_part(email_id,'@',-1) not in ('{isps_filter}') and do_suppressionStatus='CLEAN'"
+        logger.info(f"Suppressing non-configured isps records in {main_request_table}. Executing Query: {isps_filtration_query}")
+        sf_cursor.execute(isps_filtration_query)
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
-                                                                      ,'Configured isps filteration',counts_before_filter,counts_after_filter,0,0))
+                                                                      ,'Configured isps filtration',counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
-        logger.error(f"Exception occurred while performing isps filteration. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while performing isps filteration. {str(e)} " + str(traceback.format_exc()))
+        logger.error(f"Exception occurred while performing isps filtration. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while performing isps filtration. {str(e)} " + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
 
+def profile_non_match_filtration(current_count, main_request_table, logger, mysql_cursor, main_request_details):
+    try:
+        counts_before_filter = current_count
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        mysql_cursor.execute(FETCH_PROFILE_TABLE_DETAILS,(main_request_details['channelName'],))
+        profile_table_details = mysql_cursor.fetchone()
+        profile_table = profile_table_details['sfTableName']
+        email_field = profile_table_details['emailField']
+        profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'PROFILE_NON_MATCH'" \
+                                             f" from {profile_table} b where a.email_id != b.{email_field} and do_suppressionStatus = 'CLEAN'"
+        logger.info(f"Suppressing profile non-match records in {main_request_table}. Executing"
+                    f" Query: {profile_non_match_filtration_query}")
+        sf_cursor.execute(profile_non_match_filtration_query)
+        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
+                                                                       main_request_details['runNumber'], 'NA','Suppression', 'NA',
+                                                                       'Profile non-match filtration', counts_before_filter,
+                                                                       counts_after_filter, 0, 0))
+        return counts_after_filter
+    except Exception as e:
+        logger.error(f"Exception occurred while performing profile non-match filtration. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(
+            f"Exception occurred while performing profile non-match filtration. {str(e)} " + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 def data_append(filter_details, result_table, logger):
     if filter_details['appendPostalFields'] == "1":
