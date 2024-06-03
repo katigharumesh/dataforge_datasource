@@ -2063,7 +2063,7 @@ class FeedLevelSuppression():
                     query = f"merge into {self.tablename} as a using (select distinct a.*  from {self.tablename} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.email)  when matched then update set do_suppressionStatus='{supCode[i]}'"
                     self.logger.info(f"{method}Executing Query {query} ")
                     with SnowflakeContextManager(self.sfcon) as sfcur:
-                        self.logger.info("QUERY :: ", query)
+                        self.logger.info(f"QUERY ::{query}")
                         sfcur.execute(query)
                         if not self.summary:
                             query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
@@ -2078,7 +2078,7 @@ class FeedLevelSuppression():
         try:
             with SnowflakeContextManager(self.sfcon) as sfcur:
                 query = f" select distinct LIST_ID from {self.tablename} where LIST_ID is not NULL"
-                self.logger.info("QUERY :: ", query)
+                self.logger.info(f"QUERY :: {query}")
                 sfcur.execute(query)
                 listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
         except Exception as e:
@@ -2090,7 +2090,7 @@ class FeedLevelSuppression():
         liveFeedTbl = []
         with MysqlContextManager(self.mysqlcon) as mysqlcon:
             query = f" select id ,feedName,listId,channelId,suppressionRuleIds,dataPartnerId from LIVE_FEED where active=true and listid in ({listids}) "
-            self.logger.info("QUERY :: ", query)
+            self.logger.info(f"QUERY ::  {query}")
             mysqlcon.execute(query)
             rows = mysqlcon.fetchall()
             for r in rows:
@@ -2100,7 +2100,7 @@ class FeedLevelSuppression():
 
     # Invoke this method to apply feed level suppressions
     def applyFeedLevelSuppression(self) -> bool:
-        self.logger.info("Running feed level supppressions applyFeedLevelSuppression()", datetime.now())
+        self.logger.info(f"Running feed level supppressions applyFeedLevelSuppression():::{datetime.now()}")
         json_data = None
         try:
             listids = self.getDistinctListid()
@@ -2123,7 +2123,7 @@ def apply_global_fp_feed_level_suppression(table_name , result_breakdown_flag, l
         logger.info(f"Fetched result : {result}")
         if not status:
             return False , str(result), 0
-        logger.info(f"Fetched result : {result}")
+        #logger.info(f"Fetched result : {result}")
         sf_cursor = sf_conn.cursor()
         current_count = get_record_count(f"{table_name}", sf_cursor)
         return True , [result] ,current_count

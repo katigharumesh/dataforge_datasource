@@ -242,7 +242,7 @@ class Suppression_Request:
                 #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
                 send_mail(ERROR_EMAIL_SUBJECT.format("SUPPRESSION REQUEST", str(supp_request_id)),
                           MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
-                                           'E\nError Reason: Due to processing of another instance'), recipient_emails=recipient_emails)
+                                           'E\nError Reason: Due to processing of another instance'), recipient_emails=recipient_emails, message_type='plain')
                 mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', 'Due to PID existence', supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger) # FOR SUPP
                 return
@@ -372,7 +372,7 @@ class Suppression_Request:
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
             send_mail(ERROR_EMAIL_SUBJECT.format("SUPPRESSION REQUEST", str(supp_request_id)),
                       MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
-                                       'E \nError Reason: Error in Main function'),recipient_emails=recipient_emails)
+                                       'E \nError Reason: Error in Main function'),recipient_emails=recipient_emails, message_type='plain')
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
