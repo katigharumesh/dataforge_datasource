@@ -306,6 +306,14 @@ class Suppression_Request:
             # Profile non-match filtration
             current_count = profile_non_match_filtration(current_count, main_request_table, main_logger, mysql_cursor, main_request_details)
 
+            # Channel level adhoc match files
+            if filter_details['applyChannelFileMatch']:
+                current_count = channel_adhoc_files_match_and_suppress("Match",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+
+            # Channel level adhoc suppression files
+            if filter_details['applyChannelFileSuppression']:
+                current_count = channel_adhoc_files_match_and_suppress("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+
             # Data Match Selection
             current_count = self.perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table ,pid_file, mysql_cursor, main_logger, current_count)
 

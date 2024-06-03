@@ -895,7 +895,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         channel_name = main_request_details['channelName']
         feed_type = main_request_details['feedType']
         remove_duplicates = main_request_details['removeDuplicates']
-        filter_match_fields = main_request_details['FilterMatchFields'] + ',do_inputSourceMappingId'
+        filter_match_fields = main_request_details['FilterMatchFields'] + ',do_inputSource,do_inputSourceMappingId'
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
 
@@ -909,7 +909,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             input_source_mapping_id = source[1]
             if SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
                 generalized_sources.append(
-                    f"(select {main_request_details['FilterMatchFields']},'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
+                    f"(select {main_request_details['FilterMatchFields']},do_inputSource,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
             else:
                 generalized_sources.append(input_source_mapping_table_name)
 
@@ -973,7 +973,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
                 logger.info(f"Executing: {tp_sf_query}")
                 sf_cursor.execute(tp_sf_query)
         sf_cursor.execute(f"alter table {main_input_source_table} add column do_suppressionStatus varchar default "
-                          f"'CLEAN', do_matchStatus varchar default 'NON_MATCH'"
+                          f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', "
                           f"do_feedname varchar default 'Third_Party'")
         if channel_name == 'INFS':
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.ORANGE_LISTID) "
@@ -1030,8 +1030,11 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         profile_table_details = mysql_cursor.fetchone()
         profile_table = profile_table_details['sfTableName']
         email_field = profile_table_details['emailField']
+
         profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'PROFILE_NON_MATCH'" \
-                                             f" from {profile_table} b where a.email_id != b.{email_field} and do_suppressionStatus = 'CLEAN'"
+                                             f" from (select distinct a.email_id from {main_request_table} a left join" \
+                                             f" {profile_table} b on a.email_id = b.{email_field} where b.{email_field}" \
+                                             f" is null) b where a.email_id = b.email_id and do_suppressionStatus = 'CLEAN'"
         logger.info(f"Suppressing profile non-match records in {main_request_table}. Executing"
                     f" Query: {profile_non_match_filtration_query}")
         sf_cursor.execute(profile_non_match_filtration_query)
@@ -1084,6 +1087,80 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
         raise Exception(str(e)+ str(traceback.format_exc()))
     finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
+
+def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_request_details, main_request_table,
+                                           mysql_cursor, main_logger, current_count):
+    try:
+        counts_before_filter = current_count
+        if type_of_request == "Match":
+            channel_file_type = 'M'
+            filter_type = 'Channel_File_Match'
+            column_to_update = 'do_matchStatus'
+            default_value = 'NON_MATCH'
+            is_first_match_filter = True
+        if type_of_request == "Suppress":
+            channel_file_type = 'S'
+            filter_type = 'Channel_File_Suppression'
+            column_to_update = 'do_suppressionStatus'
+            default_value = 'CLEAN'
+        main_logger.info(f"Processing channel level adhoc {type_of_request} files.")
+        main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
+        channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+        channel_files_db_cursor = channel_files_db_conn.cursor(dictionary=True)
+        main_logger.info(f"Channel/Offer static files DB mysql connection acquired successfully...")
+        fetch_channel_adhoc_files = f"select concat('{CHANNEL_OFFER_FILES_SF_SCHEMA}.',TABLE_NAME) as TABLE_NAME," \
+                                    f"FILENAME,DOWNLOAD_COUNT,INSERT_COUNT from SUPPRESSION_MATCH_FILES where " \
+                                    f"FILE_TYPE='{channel_file_type}' and STATUS='A' and ID in (select FILE_ID " \
+                                    f"from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where " \
+                                    f"CHANNEL='{main_request_details['channelName']}' and " \
+                                    f"PROCESS_TYPE='C' and STATUS='A')"
+        main_logger.info(f"Fetching channel {type_of_request} adhoc file. Executing query: {fetch_channel_adhoc_files} ")
+        channel_files_db_cursor.execute(fetch_channel_adhoc_files)
+        channel_file_details = channel_files_db_cursor.fetchall()
+        channel_files_db_cursor.close()
+        channel_files_db_conn.close()
+        main_logger.info(f"Channel {type_of_request} adhoc files retrieved. Files details - {channel_file_details} ")
+        main_logger.info("Acquiring snowflake connection")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        main_logger.info("Snowflake connection acquired successfully...")
+        for filter_source in channel_file_details:
+            source_table = filter_source['TABLE_NAME']
+            filter_name = filter_source['FILENAME']
+            download_count = filter_source['DOWNLOAD_COUNT']
+            insert_count = filter_source['INSERT_COUNT']
+            sf_update_table_query = f"UPDATE {main_request_table} a set a.{column_to_update} = '{filter_name}'" \
+                                    f" from {source_table} b where a.EMAIL_MD5=b.md5hash AND a.{column_to_update} = '{default_value}' "
+            if type_of_request == "Suppress":
+                sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
+            main_logger.info(f"Executing query: {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            if type_of_request == "Match":
+                if is_first_match_filter:
+                    counts_before_filter = 0
+                    is_first_match_filter = False
+                counts_after_filter = counts_before_filter + sf_cursor.rowcount
+            elif type_of_request == "Suppress":
+                counts_after_filter = counts_before_filter - sf_cursor.rowcount
+            mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                 (main_request_details['id'], main_request_details['ScheduleId'],
+                                  main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
+                                  counts_before_filter, counts_after_filter, 0, 0))
+            counts_before_filter = counts_after_filter
+        main_logger.info(f"Channel level {type_of_request} adhoc files are processed successfully...")
+        return counts_after_filter
+    except Exception as e:
+        main_logger.error(f"Exception occurred while processing channel level {type_of_request} adhoc files. Please "
+                          f"look into this. {str(e)}" + str(traceback.format_exc()))
+        raise Exception(str(e) + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and channel_files_db_conn.is_connected():
+            channel_files_db_cursor.close()
+            channel_files_db_conn.close()
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
