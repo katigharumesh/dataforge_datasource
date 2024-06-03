@@ -1838,3 +1838,272 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+class SnowflakeContextManager:
+    def __init__(self, sfcon):
+        self.sfcon = sfcon
+
+    def __enter__(self):
+        self.cur = self.sfcon.cursor()
+        return self.cur
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cur.close()
+
+
+class MysqlContextManager:
+
+    def __init__(self, mysqlcon):
+        self.mysqlcon = mysqlcon
+
+    def __enter__(self):
+        self.cur = self.mysqlcon.cursor()
+        return self.cur
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cur.close()
+
+class LiveFeed:
+
+    def __init__(self, id, feedName, listId, channelId, suppressionRuleIds, dataPartnerId):
+        self.id = id
+        self.feedName = feedName
+        self.listId = listId
+        self.channelId = channelId
+        self.suppressionRuleIds = suppressionRuleIds
+        self.dataPartnerId = dataPartnerId
+
+class FeedLevelSuppression():
+
+    # snowflake cursor,mysql cursor,snowflake tablename,summary
+    def __init__(self, sfcon, mysqlcon, tablename,summary,logger):
+        self.sfcon = sfcon
+        self.tablename = tablename
+        self.mysqlcon = mysqlcon
+        self.summary=summary
+        self.logger = logger
+
+    def getSuppressionCode(self):
+        liveFeedTbl = {}
+        json_data=None
+        try:
+            query = f" select id ,code from LIVE_FEED_SUPPRESSION_RULE order by 1 "
+            with MysqlContextManager(self.mysqlcon) as mysqlcur:
+                mysqlcur.execute(query)
+                rows = mysqlcur.fetchall()
+                for r in rows:
+                    liveFeedTbl[str(r[0])] = r[1]
+        except Exception as e:
+            self.logger.info("ERROR :: in getSuppressionCode()", e)
+        return liveFeedTbl
+
+    def updateGlobalTable(self, liveFeed):
+        method = f"{self.__class__.__name__} ::getLiveFeedDetails() :: ListId:{liveFeed.listId} :: channelId:{liveFeed.channelId} :: "
+        self.logger.info(f"{method} has started")
+        supCode = self.getSuppressionCode()
+        supIds = liveFeed.suppressionRuleIds.split(",")
+
+        self.logger.info(f"{method} {supIds}")
+
+        self.logger.info(f"{method} {supCode}")
+
+        # self.log.logMsg(f"{method} {liveFeed}", "I")
+        for i in supIds:
+            isChannelUnsub = False
+            isChannelAbuse = False
+            cunsubCode = ''
+            cabuseCode = ''
+            cjoinCnd = ''
+            wccond = ''
+
+            funsubCode = ''
+            fjoinCnd = ''
+            wfcond = ''
+
+            zunsubCode = ''
+            zjoinCnd = ''
+            zhcond = ''
+
+            dpunsubCode = ''
+            dpjoinCnd = ''
+            dpcond = ''
+
+            # cdunsubCode = ''
+            cdjoinCnd = ''
+            cdcond = ''
+
+            gunsubCode = ''
+            gjoinCnd = ''
+            gcond = ''
+
+            bounjoinCnd = ''
+            bouncond = ''
+
+            ccpajoinCnd = ''
+            ccpacond = ''
+            runQue = False
+
+            if f"{i}" in supCode.keys():
+                if supCode[i] == 'CUNSUB':
+                    cunsubCode = f"{cunsubCode},'CLEAN'"
+                    cjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
+                               f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0)'
+                    wccond = ' and cunsub.email is not null '
+                    isChannelUnsub = True
+                    runQue = True
+
+                if supCode[i] == 'CABUSE':
+                    cabuseCode = f"{cabuseCode},'CLEAN'"
+                    cjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
+                               f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0 ) '
+                    wccond = ' and cunsub.email is not null '
+                    isChannelAbuse = True
+                    runQue = True
+
+                if supCode[i] == 'FUNSUB':
+                    funsubCode = f"{funsubCode},'CLEAN'"
+                    fjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF funsub on lower(a.EMAIL_ID)= lower(funsub.email)' \
+                               f' and funsub.channelid={liveFeed.channelId}  and a.LIST_ID=funsub.listid '
+                    wfcond = ' and funsub.email is not null '
+                    runQue = True
+
+                if supCode[i] == 'ZABUSE':
+                    zunsubCode = f"{zunsubCode},'CLEAN'"
+                    zjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF zunsub on lower(a.EMAIL_ID)= lower(zunsub.email)' \
+                               f' and zunsub.channelid={liveFeed.channelId} and a.LIST_ID=zunsub.listid and zunsub.source=\'zh\''
+                    zhcond = ' and zunsub.email is not null '
+                    runQue = True
+
+                if supCode[i] == 'DUNSUB':
+                    dpunsubCode = f"{dpunsubCode},'CLEAN'"
+                    dpjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF dpunsub on lower(a.EMAIL_ID)= lower(dpunsub.email)' \
+                                f'  and dpunsub.datapartnerid={liveFeed.dataPartnerId} '
+                    dpcond = ' and dpunsub.email is not null '
+                    runQue = True
+
+                if supCode[i] == 'GCOMPR':
+                    gjoinCnd = ' left outer join APT_CUSTDOD_GLOBAL_COMPLAINER_EMAILS_SF gunsub on lower(a.EMAIL_ID)= lower(gunsub.email)'
+                    gcond = ' and gunsub.email is not null '
+                    runQue = True
+
+                if supCode[i] == 'CANADA':
+                    cdjoinCnd = ' left outer join PFM_FLUENT_REGISTRATIONS_CANADA_SF cdunsub on lower( a.EMAIL_ID)= lower(cdunsub.EMAIL)' \
+                                ' '
+                    cdcond = ' and cdunsub.EMAIL is not null '
+                    runQue = True
+
+                if supCode[i] == 'BOSUPR':
+                    bounjoinCnd = f' left outer join APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA hrdboun on lower(a.EMAIL_ID)= lower(hrdboun.EMAIL) left outer join APT_CUSTOM_GLOBAL_SOFTINACTIVE sftboun on lower(a.EMAIL_ID)= lower(sftboun.EMAIL) '
+                    bouncond = ' and (hrdboun.EMAIL is not null or sftboun.EMAIL is not null)'
+                    runQue = True
+
+                if supCode[i] == 'CCMP':
+                    ccpajoinCnd = f' left outer join GLOBALFP_CHANNEL_COMPLAINERS ccmp on lower(a.EMAIL_ID)= lower(ccmp.EMAIL) '
+                    ccpacond = f' and ccmp.channelid={liveFeed.channelId} and a.LIST_ID={liveFeed.listId} and ccmp.EMAIL is not null '
+                    runQue = True
+
+                if funsubCode.startswith(","):
+                    funsubCode = funsubCode[1:]
+
+                if cabuseCode.startswith(","):
+                    cabuseCode = cabuseCode[1:]
+
+                if cunsubCode.startswith(","):
+                    cunsubCode = cunsubCode[1:]
+
+                if zunsubCode.startswith(","):
+                    zunsubCode = zunsubCode[1:]
+
+                if dpunsubCode.startswith(","):
+                    dpunsubCode = dpunsubCode[1:]
+
+                if len(funsubCode) > 0:
+                    fjoinCnd = f'{fjoinCnd}'
+
+                if len(cunsubCode) > 0 or len(cabuseCode) > 0:
+                    if isChannelUnsub and not isChannelAbuse:
+                        cjoinCnd = f' {cjoinCnd} and cunsub.type not in ({cunsubCode}) '
+                    if isChannelAbuse and not isChannelUnsub:
+                        cjoinCnd = f' {cjoinCnd} and cunsub.type in ({cabuseCode}) '
+                    if isChannelAbuse and isChannelUnsub:
+                        cjoinCnd = f' {cjoinCnd} and (cunsub.type not in ({cunsubCode})  or cunsub.type in ({cabuseCode}) )'
+
+                if len(zunsubCode) > 0:
+                    zjoinCnd = f' {zjoinCnd} and zunsub.type not in ({zunsubCode}) '
+
+                if len(dpunsubCode) > 0:
+                    dpjoinCnd = f' {dpjoinCnd} and dpunsub.type not in ({dpunsubCode}) '
+                if runQue:
+                    query = f"merge into {self.tablename} as a using (select distinct a.*  from {self.tablename} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.email)  when matched then update set do_suppressionStatus='{supCode[i]}'"
+                    self.logger.info(f"{method}Executing Query {query} ")
+                    with SnowflakeContextManager(self.sfcon) as sfcur:
+                        self.logger.info("QUERY :: ", query)
+                        sfcur.execute(query)
+                        if not self.summary:
+                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
+                        else:
+                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where a.do_suppressionStatus !='CLEAN' AND a.do_matchStatus!='NON_MATCH');"
+                        sfcur.execute(query1)
+                        json_data=sfcur.fetchone()
+        self.logger.info(f"{method} has ended")
+        return json_data
+    def getDistinctListid(self) -> str:
+        listids = ""
+        try:
+            with SnowflakeContextManager(self.sfcon) as sfcur:
+                query = f" select distinct listId from {self.tablename} where listId is not NULL"
+                self.logger.info("QUERY :: ", query)
+                sfcur.execute(query)
+                listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
+        except Exception as e:
+            self.logger.info("ERROR :: in getDistinctListid()", e)
+
+        return listids
+
+    def getLiveFeedDetails(self, listids) -> list:
+        liveFeedTbl = []
+        with MysqlContextManager(self.mysqlcon) as mysqlcon:
+            query = f" select id ,feedName,listId,channelId,suppressionRuleIds,dataPartnerId from LIVE_FEED where active=true and listid in ({listids}) "
+            self.logger.info("QUERY :: ", query)
+            mysqlcon.execute(query)
+            rows = mysqlcon.fetchall()
+            for r in rows:
+                syncTbl = LiveFeed(r[0], r[1], r[2], r[3], r[4], r[5])
+                liveFeedTbl.append(syncTbl)
+        return liveFeedTbl
+
+    # Invoke this method to apply feed level suppressions
+    def applyFeedLevelSuppression(self) -> bool:
+        self.logger.info("Running feed level supppressions applyFeedLevelSuppression()", datetime.now())
+        json_data = None
+        try:
+            listids = self.getDistinctListid()
+            livefeedpojos = self.getLiveFeedDetails(listids)
+            for livefeedpojo in livefeedpojos:
+                json_data=self.updateGlobalTable(livefeedpojo)
+        except Exception as e:
+            self.logger.info("Exception occurred in: applyFeedLevelSuppression() Please look into this....{str(e)}")
+            return False , str(e)
+        return True, json_data
+
+
+def apply_global_fp_feed_level_suppression(table_name , result_breakdown_flag, logger):
+    try:
+        logger.info("Function initiated global_fp feed level suppression")
+        mysql_con = mysql.connector.connect(**MYSQL_CONFIGS)
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        fobj = FeedLevelSuppression(mysql_con , sf_conn, table_name,result_breakdown_flag,logger)
+        status , result = fobj.applyFeedLevelSuppression()
+        logger.info(f"Fetched result : {result}")
+        if not status:
+            return False , str(result), 0
+        logger.info(f"Fetched result : {result}")
+        sf_cursor = sf_conn.cursor()
+        current_count = get_record_count(f"{table_name}", sf_cursor)
+        return True , [result] ,current_count
+    except Exception as e:
+        return False , str(result)+"::::"+str(e), 0
+    finally:
+            if 'connection' in locals() and sf_conn.is_connected():
+                sf_cursor.close()
+                sf_conn.close()
