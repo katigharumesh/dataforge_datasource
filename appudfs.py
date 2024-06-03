@@ -1790,7 +1790,7 @@ def channel_suppression(main_request_details, filter_details, source_table, logg
     logger.info("channel_suppression execution started.")
     channel = main_request_details['channelName']
     suppression_method = filter_details['suppressionMethod']
-    result_breakdown_flag = ''
+    result_breakdown_flag = True
     if channel == 'GREEN':
         if suppression_method == 'F':
             status, results, current_count = apply_green_feed_level_suppression(source_table, result_breakdown_flag, logger)
@@ -1798,6 +1798,8 @@ def channel_suppression(main_request_details, filter_details, source_table, logg
             status, results, current_count = apply_green_global_suppression(source_table, result_breakdown_flag, logger)
     elif channel == 'INFS':
         status, results, current_count = apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logger)
+    elif "Apptness" in channel:
+        status, results, current_count = apply_global_fp_feed_level_suppression(source_table,result_breakdown_flag, logger)
 
     if not status:
         raise Exception('Exception occurred while performing channel_suppression. Please look into it.')
