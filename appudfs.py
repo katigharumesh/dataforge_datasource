@@ -619,7 +619,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor()
         mysqlcur.execute("set time_zone='UTC';")
-        requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
+        requestquery = f"select id,{column_to_fetch},runnumber,recurrenceType,startDate,endDate,excludeDates," \
                 f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {schedule_table} where status='I' " \
                 f"and nextScheduleDue<now() and {column_to_fetch}={request_id} and runnumber={run_number} "
         logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
@@ -927,6 +927,9 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
+        logger.info(f"Deleting old detailed stats, if existent for request_id: {request_id} , run_number: {run_number} . "
+                    f"Executing query: {DELETE_SUPPRESSION_MATCH_DETAILED_STATS},({request_id},{run_number}) ")
+        mysql_cursor.execute(DELETE_SUPPRESSION_MATCH_DETAILED_STATS, (request_id, run_number))
         logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0)}")
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
@@ -1184,49 +1187,50 @@ def update_default_values(type_of_request, main_request_table, logger):
         return main_request_table
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
-        raise Exception(str(e)+ str(traceback.format_exc()))
+        raise Exception(str(e) + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
-def load_match_or_filter_file_sources(type_of_request, file_source, file_source_index, main_request_details):
-    print("Calling function load_match_or_filter_file_sources: Here are the arguments passed",type_of_request, file_source, file_source_index, main_request_details)
-    os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/", exist_ok=True)
-    os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/", exist_ok=True)
-    temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
-    source_table = f"SUPPRESSION_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
-    consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",
-                                    log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",
-                                    log_to_stdout=True)
-    file_source_type_id = file_source['sourceId']
-    consumer_logger.info(f"Acquiring mysql connection...")
-    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-    mysql_cursor = mysql_conn.cursor(dictionary=True)
-    consumer_logger.info(f"Fetch source_type for the request id: {file_source_type_id}")
-    consumer_logger.info(f"Executing query: {FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,)}")
-    mysql_cursor.execute(FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,))
-    file_source_details = mysql_cursor.fetchone()
-    hostname = file_source_details['hostname']
-    port = file_source_details['port']
-    username = file_source_details['username']
-    password = file_source_details['password']
-    source_type = file_source_details['sourceType']
-    source_sub_type = file_source_details['sourceSubType']
-    input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'], 'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
-    request_id = main_request_details['id']
-    run_number = main_request_details['runNumber']
-    schedule_id = main_request_details['ScheduleId']
-    source_table = process_file_type_request(request_id, source_table, run_number, schedule_id, source_sub_type, input_data_dict,
-                                             mysql_cursor, consumer_logger, "", temp_files_path, hostname,
-                                             port, username, password)
-
-    return tuple([file_source_index, source_table, file_source['columns']])
 
 
+def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details,
+                                      main_request_table, mysql_cursor, main_logger, current_count):
+    if type_of_request == "SUPPRESS_MATCH":
+        key_to_fetch = 'matchedDataSources'
+    if type_of_request == "SUPPRESS_FILTER":
+        key_to_fetch = 'filterDataSources'
+    if filter_details[key_to_fetch] is not None:
+        match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+    else:
+        match_or_filter_source_details = {}
+    match_or_filter_sources = []
+    if len(match_or_filter_source_details) == 0:
+        main_logger.info(f"No {type_of_request} sources are chosen.")
+        if type_of_request == "SUPPRESS_MATCH":
+            update_default_values(type_of_request, main_request_table, main_logger)
+        return current_count
+    else:
+        if 'DataSource' in match_or_filter_source_details.keys():
+            data_source_filter_list = list(match_or_filter_source_details['DataSource'])
+            for i in data_source_filter_list:
+                data_source_details_dict = json.loads(str(i))
+                data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
+                columns = data_source_details_dict['columns']
+                match_or_filter_sources.append(tuple([data_source_table_name, columns, 'DataSource']))
+        if 'ByField' in match_or_filter_source_details.keys():
+            for filter in list(match_or_filter_source_details['ByField']):
+                match_or_filter_sources.append(tuple(['', filter, 'ByField']))
+    current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table,
+                                            match_or_filter_sources, mysql_cursor, main_logger, current_count)
+    main_logger.info(f"All {type_of_request} sources are successfully processed.")
+    return current_count
 
-def perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_filter_sources_loaded ,mysql_cursor, logger, current_count):
+
+def perform_filter_or_match(type_of_request, main_request_details, main_request_table, sorted_filter_sources_loaded ,
+                            mysql_cursor, logger, current_count):
     try:
-        logger.info(f"Function perform_filter_or_match invoked for {type_of_request} : Sorted Sources Loaded are : {sorted_filter_sources_loaded} ")
+        logger.info(f"Function perform_filter_or_match invoked for {type_of_request}: Sorted Sources Loaded are: {sorted_filter_sources_loaded} ")
         counts_before_filter = current_count
         is_first_match_filter = True
         if type_of_request == "SUPPRESS_MATCH":
@@ -1262,14 +1266,6 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}"
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
-            elif filter_source[2] == 'Channel_File_Match' or filter_source[2] == 'Channel_File_Suppression':
-                source_table = filter_source[0]
-                filter_name = str(filter_source[1]).split(',')[0]
-                download_count = str(filter_source[1]).split(',')[1]
-                insert_count = str(filter_source[1]).split(',')[2]
-                filter_type = filter_source[2]
-                sf_update_table_query = f"UPDATE {main_request_table} a set a.{column_to_update} = '{filter_name}'" \
-                                        f" from {source_table} b where a.EMAIL_MD5=b.md5hash "
             else:
                 match_fields = filter_source[1].split(",")
                 source_table = filter_source[0]
@@ -1286,16 +1282,10 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                     counts_before_filter = 0
                     is_first_match_filter = False
                 counts_after_filter = counts_before_filter + sf_cursor.rowcount
-                if filter_source[2] == 'Channel_File_Match':
-                    filter_type = 'Channel_File_Match'
-                else:
-                    filter_type = 'Match'
+                filter_type = 'Match'
             elif type_of_request == "SUPPRESS_FILTER":
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
-                if filter_source[2] == 'Channel_File_Suppression':
-                    filter_type = 'Channel_File_Suppression'
-                else:
-                    filter_type = 'Suppression'
+                filter_type = 'Suppression'
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
                                   main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
@@ -1305,7 +1295,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         return counts_after_filter
     except Exception as e:
         logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(str(e)+ str(traceback.format_exc()))
+        raise Exception(str(e) + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()

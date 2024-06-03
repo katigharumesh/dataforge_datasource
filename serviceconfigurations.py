@@ -180,6 +180,8 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId
 SUPP_DATASET_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order  by runNumber desc limit 1"
 SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
 
+DELETE_SUPPRESSION_MATCH_DETAILED_STATS = f" delete from {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} where requestId= %s" \
+                                          f" and runNumber = %s "
 INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} " \
                                           f"(requestId,requestScheduledId,runNumber,offerId,filterType,associateOfferId" \
                                           f",filterName,countsBeforeFilter,countsAfterFilter,downloadCount,insertCount )" \
@@ -210,7 +212,7 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
     'allow_local_infile': True
 }
 
-FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper('%s')"
+FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper(%s) "
 
 POSTAL_TABLE = "INFS_LPT.POSTAL_DATA"
 PROFILE_TABLE = ""
