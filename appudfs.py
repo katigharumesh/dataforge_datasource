@@ -1865,6 +1865,30 @@ class MysqlContextManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cur.close()
 
+class SnowflakeContextManager:
+    def __init__(self, sfcon):
+        self.sfcon = sfcon
+
+    def __enter__(self):
+        self.cur = self.sfcon.cursor()
+        return self.cur
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cur.close()
+
+
+class MysqlContextManager:
+
+    def __init__(self, mysqlcon):
+        self.mysqlcon = mysqlcon
+
+    def __enter__(self):
+        self.cur = self.mysqlcon.cursor()
+        return self.cur
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cur.close()
+
 class LiveFeed:
 
     def __init__(self, id, feedName, listId, channelId, suppressionRuleIds, dataPartnerId):
@@ -2053,7 +2077,7 @@ class FeedLevelSuppression():
         listids = ""
         try:
             with SnowflakeContextManager(self.sfcon) as sfcur:
-                query = f" select distinct listId from {self.tablename} where listId is not NULL"
+                query = f" select distinct LIST_ID from {self.tablename} where LIST_ID is not NULL"
                 self.logger.info("QUERY :: ", query)
                 sfcur.execute(query)
                 listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
@@ -2094,7 +2118,7 @@ def apply_global_fp_feed_level_suppression(table_name , result_breakdown_flag, l
         logger.info("Function initiated global_fp feed level suppression")
         mysql_con = mysql.connector.connect(**MYSQL_CONFIGS)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
-        fobj = FeedLevelSuppression(mysql_con , sf_conn, table_name,result_breakdown_flag,logger)
+        fobj = FeedLevelSuppression(sf_conn, mysql_con, table_name,result_breakdown_flag,logger)
         status , result = fobj.applyFeedLevelSuppression()
         logger.info(f"Fetched result : {result}")
         if not status:
