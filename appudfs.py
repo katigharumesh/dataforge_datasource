@@ -1906,7 +1906,7 @@ class FeedLevelSuppression():
         self.sfcon = sfcon
         self.tablename = tablename
         self.mysqlcon = mysqlcon
-        self.summary=summary
+        self.summary= summary
         self.logger = logger
 
     def getSuppressionCode(self):
@@ -2082,7 +2082,7 @@ class FeedLevelSuppression():
                 sfcur.execute(query)
                 listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
         except Exception as e:
-            self.logger.info("ERROR :: in getDistinctListid()", e)
+            self.logger.info(f"ERROR :: in getDistinctListid() {e}")
 
         return listids
 
