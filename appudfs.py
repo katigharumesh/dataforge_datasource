@@ -620,7 +620,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
         mysqlcur = mysql_conn.cursor()
         mysqlcur.execute("set time_zone='UTC';")
         requestquery = f"select id,datasourceId,runnumber,recurrenceType,startDate,endDate,excludeDates," \
-                f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {SCHEDULE_TABLE} where status='I' " \
+                f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {schedule_table} where status='I' " \
                 f"and nextScheduleDue<now() and datasourceId={request_id} and runnumber={run_number} "
         logger.info(f"Pulling schedule details for updation of nextScheduleDue, Query ::{requestquery}")
         mysqlcur.execute(requestquery)
@@ -927,7 +927,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        logger.info(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
+        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0)}")
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
 #Removing duplicates based on feed type
@@ -973,7 +973,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
                 logger.info(f"Executing: {tp_sf_query}")
                 sf_cursor.execute(tp_sf_query)
         sf_cursor.execute(f"alter table {main_input_source_table} add column do_suppressionStatus varchar default "
-                          f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', do_isDeleted varchar default 'N', "
+                          f"'CLEAN', do_matchStatus varchar default 'NON_MATCH'"
                           f"do_feedname varchar default 'Third_Party'")
         if channel_name == 'INFS':
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.ORANGE_LISTID) "

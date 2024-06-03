@@ -165,7 +165,7 @@ UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
                              f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
-                             f'a.filterId,a.offerSuppressionIds from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.filterId,a.offerSuppressionIds,a.purdueSuppression  from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
@@ -186,7 +186,7 @@ INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETA
                                           f" values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"
 
 FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressionMethod," \
-                               "purdueSuppression,stateSuppression,zipSuppression,filterDataSources," \
+                               "stateSuppression,zipSuppression,filterDataSources," \
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                "postalFields from {} where id = {}"

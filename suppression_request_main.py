@@ -142,15 +142,15 @@ class Suppression_Request:
             channel_level_filter = filter_details['applyChannelFileMatch']
             channel_file_type = 'M'
             channel_filter_name = 'Channel_File_Match'
-            self.match_or_filter_file_sources_loaded = self.match_sources_loaded
+            match_or_filter_file_sources_loaded = self.match_sources_loaded
         if type_of_request == "SUPPRESS_FILTER":
             key_to_fetch = 'filterDataSources'
             channel_level_filter = filter_details['applyChannelFileSuppression']
             channel_file_type = 'S'
             channel_filter_name = 'Channel_File_Suppression'
-            self.match_or_filter_file_sources_loaded = self.filter_sources_loaded
+            match_or_filter_file_sources_loaded = self.filter_sources_loaded
         if filter_details[key_to_fetch] is not None:
-            self.match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+            match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
         else:
             match_or_filter_source_details = {}
         #match_or_filter_file_sources_loaded =[]
@@ -190,22 +190,22 @@ class Suppression_Request:
             # Wait for consumer threads to finish
             for consumer_thread in consumer_threads:
                 consumer_thread.join()
-            print("match_or_filter_file_sources_loaded : " + str(self.match_or_filter_file_sources_loaded))
-            if len(self.match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
+            print("match_or_filter_file_sources_loaded : " + str(match_or_filter_file_sources_loaded))
+            if len(match_or_filter_file_sources_loaded) != len(match_or_filter_file_source_details):
                 main_logger.info(
-                    f"Only {len(self.match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+                    f"Only {len(match_or_filter_file_sources_loaded)} filter sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
                 print(
-                    f"Only {len(self.match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
+                    f"Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources. Considering the suppression request as failed.")
                 mysql_cursor.execute(DELETE_FILE_DETAILS,
                                      (main_request_details['ScheduleId'], main_request_details['runNumber']))
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0',
-                                                              f'Only {len(self.match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
+                                                              f'Only {len(match_or_filter_file_sources_loaded)} sources are successfully processed out of {len(match_or_filter_file_source_details)} sources.',supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST",supp_request_id, run_number, main_logger)
                 os.remove(pid_file)
                 return
             main_logger.info(
-                f" {type_of_request} file sources are created successfully.. here are details for those tables, {str(self.match_or_filter_file_sources_loaded)}")
-            sorted_match_or_filter_sources_loaded += [tuple([t[1], t[2], 'FileSource']) for t in sorted(self.match_or_filter_file_sources_loaded, key=lambda t: t[0])]
+                f" {type_of_request} file sources are created successfully.. here are details for those tables, {str(match_or_filter_file_sources_loaded)}")
+            sorted_match_or_filter_sources_loaded += [tuple([t[1], t[2], 'FileSource']) for t in sorted(match_or_filter_file_sources_loaded, key=lambda t: t[0])]
             if 'DataSource' in match_or_filter_source_details.keys():
                 data_source_filter_list = list(match_or_filter_source_details['DataSource'])
                 for i in data_source_filter_list:
