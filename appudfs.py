@@ -67,17 +67,17 @@ def load_input_source(type_of_request, source, main_request_details):
                 where_conditions = []
                 for filter in input_data_dict:
                     if dict(filter).__len__() != 1:
-                        if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
+                        if filter['dataType'] == 'String' and filter['searchType'] in ('like', 'not like'):
                             filter['value'] = f"%{filter['value']}%"
-                        if filter['dataType'] != 'number' and filter['searchType'] != '>=':
+                        if filter['dataType'] != 'Number' and filter['searchType'] != '>=':
                             filter['value'] = "'" + filter['value'] + "'"
-                        if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
+                        if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'Number':
                             filter['value'] = "(" + filter['value'] + ")"
-                        elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
+                        elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'Number':
                             filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
-                        if filter['searchType'] == 'between' and filter['dataType'] != 'number':
+                        if filter['searchType'] == 'between' and filter['dataType'] != 'Number':
                             filter['value'] = filter['value'].replace(',', '\' and \'')
-                        elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
+                        elif filter['searchType'] == 'between' and filter['dataType'] == 'Number':
                             filter['value'] = filter['value'].replace(',', ' and ')
                         if filter['searchType'] == '>=':
                             filter['value'] = f"current_date() - interval '{filter['value']} days'"
@@ -1257,17 +1257,17 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         for filter_source in sorted_filter_sources_loaded:
             if filter_source[2] == 'ByField':
                 filter = filter_source[1]
-                if filter['dataType'] == 'string' and filter['searchType'] in ('like', 'not like'):
+                if filter['dataType'] == 'String' and filter['searchType'] in ('like', 'not like'):
                     filter['value'] = f"%{filter['value']}%"
-                if filter['dataType'] != 'number' and filter['searchType'] != '>=':
+                if filter['dataType'] != 'Number' and filter['searchType'] != '>=':
                     filter['value'] = "'" + filter['value'] + "'"
-                if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'number':
+                if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'Number':
                     filter['value'] = "(" + filter['value'] + ")"
-                elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'number':
+                elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'Number':
                     filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
-                if filter['searchType'] == 'between' and filter['dataType'] != 'number':
+                if filter['searchType'] == 'between' and filter['dataType'] != 'Number':
                     filter['value'] = filter['value'].replace(',', '\' and \'')
-                elif filter['searchType'] == 'between' and filter['dataType'] == 'number':
+                elif filter['searchType'] == 'between' and filter['dataType'] == 'Number':
                     filter['value'] = filter['value'].replace(',', ' and ')
                 if filter['searchType'] == '>=':
                     filter['value'] = f"current_date() - interval '{filter['value']} days'"
