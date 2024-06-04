@@ -157,6 +157,16 @@ SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
 SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE = "SUPPRESSION_PROFILE_TABLES_LOOKUP"
 
+SUPP_FILE_DETAILS_TABLE = 'SUPPRESSION_REQUEST_FILE_DETAILS'
+
+SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SUPP_SCHEDULE_STATUS_TABLE} where requestId=%s and status='C'"
+
+SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestMappingId=%s and runNumber=%s and file_status='C' "
+
+SUPP_INSERT_FILE_DETAILS = f'insert into {SUPP_FILE_DETAILS_TABLE}(suppressionRequestScheduleId,runNumber,suppressionRequestMappingId,count,fileName,createdBy,updatedBy,size,last_modified_time,file_status,error_desc) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+
+SUPP_DELETE_FILE_DETAILS = f'delete from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestScheduleId=%s and runNumber=%s '
+
 FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT_OTEAM"
 

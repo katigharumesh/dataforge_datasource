@@ -49,7 +49,7 @@ def load_input_source(type_of_request, source, main_request_details):
         if source_type == "F":
             temp_files_path = f"{file_path}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
             os.makedirs(temp_files_path,exist_ok=True)
-            source_table = process_file_type_request(request_id, source_table, run_number,
+            source_table = process_file_type_request(type_of_request,request_id, source_table, run_number,
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             port, username, password)
@@ -371,8 +371,7 @@ class ProcessS3Files:
             print(f"Error occurred during header validation for {file} file. Error: {e}")
 
 
-def process_file_type_request(data_source_id, source_table, run_number, schedule_id, source_sub_type, input_data_dict, mysql_cursor,
-                                 consumer_logger, mapping_id, temp_files_path, hostname = None, port = None, username = None, password = None):
+def process_file_type_request(type_of_request,request_id, source_table, run_number,schedule_id, source_sub_type, input_data_dict, mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname = None, port = None, username = None, password = None):
     try:
         if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -400,13 +399,21 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
 
         last_successful_run_number = -1
         # mysql_cursor.execute(last_successful_run_number_query)
+        if type_of_request == "SUPPRESSION_REQUEST":
+            last_successful_run_number_query = SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY
+            fetch_last_iteration_file_details_query = FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
+            insert_file_details = SUPP_INSERT_FILE_DETAILS
+        if type_of_request == "SUPPRESSION_DATASET":
+            last_successful_run_number_query = LAST_SUCCESSFUL_RUN_NUMBER_QUERY
+            fetch_last_iteration_file_details_query = SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
+            insert_file_details = INSERT_FILE_DETAILS
 
         last_iteration_files_details = []
         if run_number != 1:
             try:
-                mysql_cursor.execute(LAST_SUCCESSFUL_RUN_NUMBER_QUERY, (str(data_source_id),))
+                mysql_cursor.execute(last_successful_run_number_query, (str(request_id),))
                 last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-                mysql_cursor.execute(FETCH_LAST_ITERATION_FILE_DETAILS_QUERY, (str(mapping_id), str(last_successful_run_number)))
+                mysql_cursor.execute(fetch_last_iteration_file_details_query, (str(mapping_id), str(last_successful_run_number)))
                 last_iteration_files_details = mysql_cursor.fetchall()
                 consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
             except Exception as e :
@@ -445,7 +452,7 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                     last_modified_time = file_details_dict["last_modified_time"]
                     file_status = file_details_dict['status']
                     error_desc = file_details_dict['error_msg']
-                    mysql_cursor.execute(INSERT_FILE_DETAILS, (schedule_id, run_number, mapping_id, count, fileName, 'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time, file_status , error_desc))
+                    mysql_cursor.execute(insert_file_details, (schedule_id, run_number, mapping_id, count, fileName, 'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
                     if file_status == 'E':
                         raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
@@ -479,9 +486,9 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
                 last_modified_time = file_details_dict["last_modified_time"]
                 file_status = file_details_dict['status']
                 error_desc = file_details_dict['error_msg']
-                mysql_cursor.execute(INSERT_FILE_DETAILS, (
+                mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, count, fileName,
-                    'DF_DATASET SERVICE', 'DF_DATASET SERVICE', size, last_modified_time,file_status , error_desc))
+                    'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
                 if file_status == 'E':
                     raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
@@ -498,6 +505,8 @@ def process_file_type_request(data_source_id, source_table, run_number, schedule
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+
 
 
 def process_single_file(mapping_id, temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict,

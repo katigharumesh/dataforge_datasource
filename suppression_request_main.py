@@ -132,7 +132,7 @@ class Suppression_Request:
             main_logger.info("sources loaded: " + str(self.sources_loaded))
             if len(self.sources_loaded) != self.input_sources_count:
                 main_logger.info(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} ")
-                mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
+                mysql_cursor.execute(SUPP_DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
                                                               , supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
