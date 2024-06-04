@@ -178,6 +178,9 @@ class Suppression_Request:
             # Data Match Selection
             current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
+            # Validate Remaining Data (Non-matched)
+            #if main_request_details['remainingData']:
+
             # Data filter Selection
             current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
