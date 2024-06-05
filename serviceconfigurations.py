@@ -42,7 +42,7 @@ import boto3
 SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/DATASET/"
 
 LOG_PATH = SCRIPT_PATH + "app_logs"
-FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/r_logs/" + "r_logs"  # local file path - mount to download the temp files
+FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/r_logs/"   # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -144,8 +144,8 @@ SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
 SUPP_FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/SUPPRESSION_REQUEST/r_logs"  # local file path - mount to download the temp files
 SUPP_PID_FILE = SUPP_SCRIPT_PATH + "supp_REQUEST_ID.pid"
 
-SUPP_SOURCE_TABLE_PREFIX = "SUPPRESSION_INPUT_SOURCE_"
-MAIN_INPUT_SOURCE_TABLE_PREFIX = "SUPPRESSION_REQUEST_MAIN_INPUT_"
+SUPP_SOURCE_TABLE_PREFIX = "DO_SUPPRESSION_REQUEST_MAPPING_"
+MAIN_INPUT_SOURCE_TABLE_PREFIX = "DO_SUPPRESSION_REQUEST_"
 
 SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
 SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"

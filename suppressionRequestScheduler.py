@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 import traceback
 import logging
-from suppression_request_main import *
+from suppressionRequestProcessor import *
 logging.basicConfig(level=logging.INFO)
 logger = create_logger("scheduler_log", SUPP_LOG_PATH)
 date= str(datetime.now().date())
