@@ -16,7 +16,7 @@ class RequestPicker:
         self.mysqlcon = mysql.connector.connect(**MYSQL_CONFIGS)
 
     def suppressionRequestSchedule(self, updateflag, request,requestList):
-        logger.info(f"data source schedule process started ....")
+        logger.info(f"Suppression request schedule process started ....")
         try:
             mysqlcur = self.mysqlcon.cursor()
             insertquery = f"Insert into {SUPP_SCHEDULE_STATUS_TABLE}(requestID,requestScheduledId,runnumber,createdDate,createdTimestamp,updatedDate) values " \
@@ -27,11 +27,11 @@ class RequestPicker:
                 mysqlcur.execute(insertquery)
                 #mysqlcur.commit()
         except Exception as e:
-            logger.error(f"Error in datasourceschedule() :: {e}")
+            logger.error(f"Error in suppressionRequestSchedule() :: {e}")
 
 
     def processrequests(self,request,requestList):
-        logger.info(f"Request Process Started .. {datetime.now()}")
+        logger.info(f"Request Processing Started .. {datetime.now()}")
         updateflag=None
         id = request[0]
         startDate=str(request[4])
@@ -44,8 +44,8 @@ class RequestPicker:
                 mysqlcur.execute(updatequery)
                 updateflag=True
                 self.suppressionRequestSchedule(updateflag,request,requestList)
-                dataset_obj = Suppression_Request()
-                dataset_obj.suppression_request_processor(request[1],request[2]+1)
+                request_obj = Suppression_Request()
+                request_obj.suppression_request_processor(request[1],request[2]+1)
             else:
                 logger.info(f"Request Scheduled in Future.It will initiate from {startDate} .....")
             #mysqlcur.commit()
@@ -96,7 +96,6 @@ class RequestPicker:
             logger.error(traceback.print_exc())
 
 
-
-if __name__=='__main__':
-    obj= RequestPicker()
+if __name__ == '__main__':
+    obj = RequestPicker()
     obj.requestThreadProcess()

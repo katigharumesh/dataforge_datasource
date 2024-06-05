@@ -4,21 +4,20 @@ basepath='/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST'
 PYTHON_PATH='/home/zxdev/lptServices/PYTHON_FILES/'
 pidPath=$basepath/pidfile.txt
 
-if [ ! -f $pidPath ];then
-echo "PID in Progress" > $pidPath
-echo "Suppression Request Picker Service Started :: `date`"
+if [ ! -f $pidPath ]; then
+  echo "PID created" >$pidPath
+  echo "Suppression Request Picker Service Started :: $(date)"
 
-while true ; do
+  while true; do
 
-export pythonPath=$PYTHON_PATH/site-packages
-$PYTHON_PATH/python37/bin/python3.7 $basepath/suppressionRequestScheduler.py
-sleep 20
-done
-if [ $? -eq 0 ]; then
-        echo "Request Picker service Ended :: `date`"
-fi
+    export pythonPath=$PYTHON_PATH/site-packages
+    $PYTHON_PATH/python37/bin/python3.7 $basepath/suppressionRequestScheduler.py
+    sleep 20
+  done
 
-rm $pidPath
+  rm $pidPath
 
-echo "Request Picker service Execution Ended :: `date`"
+  echo "Suppression Request Picker service Execution Ended :: $(date)"
+else
+  echo "Suppression Request Picker service seems to be already in-progress, please verify. If not, the pid file might got stuck, pid file : ${pidPath} "
 fi
