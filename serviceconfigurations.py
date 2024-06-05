@@ -280,7 +280,7 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 #RECEPIENT_EMAILS = []
-EMAIL_SUBJECT = "Dataops {} {}"
+EMAIL_SUBJECT = "Dataops {} {} {}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
 MAIL_BODY = '''Hi Team,
 

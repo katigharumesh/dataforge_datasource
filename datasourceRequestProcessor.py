@@ -74,13 +74,16 @@ class Dataset:
             mysql_cursor.execute(MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number))
             main_logger.info(f"Executing : {UPDATE_SCHEDULE_STATUS, ('I','0','', request_id, run_number)}")
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('I','0','', request_id, run_number))
+            main_logger.info(f"Fetch main data source details, executing : {FETCH_MAIN_DATASET_DETAILS, (request_id, run_number)}")
+            mysql_cursor.execute(FETCH_MAIN_DATASET_DETAILS, (request_id, run_number))
+            main_request_details = mysql_cursor.fetchone()
             pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
             if os.path.exists(str(pid_file)):
                 main_logger.info("Script execution is already in progress, hence skipping the execution.")
-                send_skype_alert("Script execution is already in progress, hence skipping the execution.")
+                #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger)
-                send_mail(ERROR_EMAIL_SUBJECT.format("Dataset",str(request_id)),
+                send_mail(ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['a.name']),str(request_id)),
                           MAIL_BODY.format("Dataset",str(request_id),str(run_number),str(schedule_time),
                                            'E\nError Reason: Due to processing of another instance'))
                 return
@@ -88,9 +91,6 @@ class Dataset:
             start_time = time.time()
             main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
             delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
-            main_logger.info(f"Fetch main data source details, executing : {FETCH_MAIN_DATASET_DETAILS,(request_id, run_number)}")
-            mysql_cursor.execute(FETCH_MAIN_DATASET_DETAILS,(request_id, run_number))
-            main_request_details = mysql_cursor.fetchone()
             sources_queue = queue.Queue()
             queue_empty_condition = threading.Condition()
             # Preparing individuals tables for given data sources

@@ -111,10 +111,14 @@ def load_input_source(type_of_request, source, main_request_details):
                 sf_cursor.execute(
                     f"select count(1) from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} ")
                 records_count = sf_cursor.fetchone()[0]
+                if type_of_request == "SUPPRESSION_REQUEST":
+                    insert_file_details = SUPP_INSERT_FILE_DETAILS
+                if type_of_request == "SUPPRESSION_DATASET":
+                    insert_file_details = INSERT_FILE_DETAILS
                 #mysql_cursor.execute(DELETE_FILE_DETAILS, (schedule_id, run_number, mapping_id))
-                mysql_cursor.execute(INSERT_FILE_DETAILS, (
+                mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
-                    'DF_DATASET SERVICE', 'DF_DATASET SERVICE', 'NA', 'NA','C',''))
+                    'DATA OPS SERVICE', 'DATA OPS SERVICE', 'NA', 'NA','C',''))
                 return tuple([source_table, mapping_id])
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
