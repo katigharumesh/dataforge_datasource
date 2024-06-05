@@ -1224,7 +1224,8 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     else:
         match_or_filter_source_details = {}
     match_or_filter_sources = []
-    if len(match_or_filter_source_details) == 0:
+    #if len(match_or_filter_source_details) == 0:
+    if match_or_filter_source_details['DataSource'] == [] and match_or_filter_source_details['ByField'] == []:
         main_logger.info(f"No {type_of_request} sources are chosen.")
         if type_of_request == "SUPPRESS_MATCH":
             update_default_values(type_of_request, main_request_table, main_logger)
@@ -1936,11 +1937,13 @@ class FeedLevelSuppression():
         supCode = self.getSuppressionCode()
         supIds = liveFeed.suppressionRuleIds.split(",")
 
+
         self.logger.info(f"{method} {supIds}")
 
         self.logger.info(f"{method} {supCode}")
 
         # self.log.logMsg(f"{method} {liveFeed}", "I")
+        json_data = None
         for i in supIds:
             isChannelUnsub = False
             isChannelAbuse = False
@@ -2115,12 +2118,12 @@ class FeedLevelSuppression():
             for livefeedpojo in livefeedpojos:
                 json_data=self.updateGlobalTable(livefeedpojo)
         except Exception as e:
-            self.logger.info("Exception occurred in: applyFeedLevelSuppression() Please look into this....{str(e)}")
+            self.logger.info(f"Exception occurred in: applyFeedLevelSuppression() Please look into this....{str(e)}")
             return False , str(e)
         return True, json_data
 
 
-def apply_global_fp_feed_level_suppression(table_name , result_breakdown_flag, logger):
+def apply_global_fp_feed_level_suppression(table_name, result_breakdown_flag, logger):
     try:
         logger.info("Function initiated global_fp feed level suppression")
         mysql_con = mysql.connector.connect(**MYSQL_CONFIGS)
