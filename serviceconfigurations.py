@@ -224,9 +224,9 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
 
 FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper(%s) "
 
-POSTAL_TABLE = "INFS_LPT.POSTAL_DATA"
+POSTAL_TABLE = "INFS_LPT_QA.POSTAL_DATA"
 PROFILE_TABLE = ""
-POSTAL_MATCH_FIELDS = ""
+POSTAL_MATCH_FIELDS = "MD5HASH"
 PROFILE_MATCH_FIELDS = ""
 
 FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password,b.sourceType,b.sourceSubType from {SOURCE_TYPES_TABLE} b where id = %s "
