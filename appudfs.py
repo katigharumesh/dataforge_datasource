@@ -1095,7 +1095,8 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         logger.info(f"{result_table} altered successfully")
         alter_fields_list = to_append_columns.split(",")
         sf_update_table_query = f"MERGE INTO {result_table}  a using ({source_table}) b ON "
-        sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_keys.split(",")])
+        #sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_keys.split(",")])
+        sf_update_table_query += " AND ".join([f"a.{ 'EMAIL_ID' if key == 'EMAIL' else  'EMAIL_MD5' if key== 'MD5HASH' else key } = b.{key}" for key in match_keys.split(",")])
         sf_update_table_query += " WHEN MATCHED THEN  UPDATE SET "
         sf_update_table_query += ", ".join([f"a.{field} = b.{field}" for field in alter_fields_list])
         logger.info(f"Executing query:  {sf_update_table_query}")
@@ -1109,6 +1110,7 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
 
 
 def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_request_details, main_request_table,
