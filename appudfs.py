@@ -1073,9 +1073,9 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
             sf_conn.close()
 
 def data_append(filter_details, result_table, logger):
-    if filter_details['appendPostalFields'] == "1":
+    if filter_details['appendPostalFields']:
         result_table = append_fields(result_table, POSTAL_TABLE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger)
-    if filter_details['appendProfileFields'] == "1":
+    if filter_details['appendProfileFields']:
         result_table = append_fields(result_table, PROFILE_TABLE, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
 
 
