@@ -83,7 +83,7 @@ class Dataset:
                 #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger)
-                send_mail(ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['a.name']),str(request_id)),
+                send_mail(ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['name']),str(request_id)),
                           MAIL_BODY.format("Dataset",str(request_id),str(run_number),str(schedule_time),
                                            'E\nError Reason: Due to processing of another instance'))
                 return
