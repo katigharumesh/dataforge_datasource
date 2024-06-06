@@ -203,7 +203,8 @@ class Suppression_Request:
                                                           filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
 
             # Performing Purdue suppression
-
+            if main_request_details['purdueSuppression']:
+                current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
 
             #Offer downloading and suppression
             main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")

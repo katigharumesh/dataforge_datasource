@@ -2149,3 +2149,88 @@ def apply_global_fp_feed_level_suppression(table_name, result_breakdown_flag, lo
             if 'connection' in locals() and sf_conn.is_connected():
                 sf_cursor.close()
                 sf_conn.close()
+
+
+def purdue_suppression(main_request_details, main_request_table, logger, counts_before_filter):
+    try:
+        logger.info(f"Purdue suppression initiated.")
+        request_id = main_request_details['id']
+        run_number = main_request_details['runNumber']
+        os.makedirs(f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/", exist_ok=True)
+        os.system(f"rm {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*")
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        sf_cursor.execute(f"create temporary stage purdue_stage_{request_id}_{run_number}")
+        sf_cursor.execute(f"copy into @purdue_stage_{request_id}_{run_number} from (select distinct EMAIL_MD5 from "
+                          f"{main_request_table} where do_matchStatus!='NON_MATCH' and do_suppressionStatus='CLEAN') "
+                          f"FILE_FORMAT=(TYPE=CSV COMPRESSION=GZIP)")
+        logger.info(f"Copying .gz files from stage to {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/ path")
+        sf_cursor.execute(f"get @purdue_stage_{request_id}_{run_number}/*.gz "
+                          f"file://{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
+        logger.info(f"Unzipping .gz files in {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
+        os.system(f"gunzip {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.gz")
+        logger.info(f"Copying {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv files into"
+                    f" single file {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+        os.system(f"cat {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv"
+                  f" > {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        logger.info(f"Inserting into Purdue lookup table. Executing: {PURDUE_INSERT_QUERY,(request_id,run_number,'W')}")
+        mysql_cursor.execute(PURDUE_INSERT_QUERY, (request_id,run_number,'W'))
+        logger.info(f"Checking if any purdue supp configured requests are in-progress.")
+        in_queue = True
+        while in_queue:
+            mysql_cursor.execute(PURDUE_CHECK_INPROGRESS_QUERY)
+            result = mysql_cursor.fetchone()
+            if len(result) != 0:
+                logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['run_number']} purdue"
+                            f" supp is in-progress. So, waiting for {PURDUE_SUPP_WAITING_TIME} sec")
+                time.sleep(PURDUE_SUPP_WAITING_TIME)
+            else:
+                logger.info(f"Currently no purdue supp requests are in-progress. Checking if any other purdue supp requests are in queue.")
+                mysql_cursor.execute(PURDUE_CHECK_QUEUE_QUERY)
+                result = mysql_cursor.fetchone()
+                if result['requestId'] != request_id or result['runNumber'] != run_number:
+                    logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['run_number']} purdue"
+                                f" supp is prior in the queue and might initiated soon. So, checking again after "
+                                f"{PURDUE_SUPP_WAITING_TIME} sec")
+                    time.sleep(PURDUE_SUPP_WAITING_TIME)
+                else:
+                    logger.info("Currently, purdue supp requests queue is zero. So, making this request as in-progress")
+                    mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY,('I', request_id, run_number))
+
+                    result = subprocess.run(["/bin/sh", "-x", f"{SUPP_SCRIPT_PATH}/purdue_supp.sh",
+                                             f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}",
+                                             f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/"])
+                    result.check_returncode()
+
+                    logger.error(f"Making purdue status as Completed in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
+                                 f", run_number: {result['run_number']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number)}  ")
+                    mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number))
+                    in_queue = False
+        sf_cursor.execute(f"create temporary stage purdue_stage_{request_id}_{run_number}_cleansed")
+        sf_cursor.execute(f"put file://{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/* @purdue_stage_{request_id}_{run_number}_cleansed")
+        sf_cursor.execute(f"create transient table {main_request_table}_purdue_cleansed(email_md5 varchar)")
+        sf_cursor.execute(f"copy into {main_request_table}_purdue_cleansed from @purdue_stage_{request_id}_{run_number}_cleansed")
+        sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM (select "
+                          f"c.email_md5 from {main_request_table} c left join {main_request_table}_purdue_cleansed d "
+                          f"on c.email_md5=d.email_md5 where d.email_md5 is null) b WHERE a.email_md5=b.email_md5 and "
+                          f"a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
+        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
+                                                                      ,'Purdue',counts_before_filter,counts_after_filter,0,0))
+        logger.info(f"Purdue suppression completed.")
+        return counts_after_filter
+    except Exception as e:
+        logger.error(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
+        logger.error(f"Making purdue status as Error in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
+                     f", run_number: {result['run_number']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number)}  ")
+        mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number))
+        raise Exception(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysql_cursor.close()
+            mysql_conn.close()
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
