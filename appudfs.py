@@ -2184,8 +2184,8 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         while in_queue:
             mysql_cursor.execute(PURDUE_CHECK_INPROGRESS_QUERY)
             result = mysql_cursor.fetchone()
-            if len(result) != 0:
-                logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['run_number']} purdue"
+            if result is not None:
+                logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['runNumber']} purdue"
                             f" supp is in-progress. So, waiting for {PURDUE_SUPP_WAITING_TIME} sec")
                 time.sleep(PURDUE_SUPP_WAITING_TIME)
             else:
@@ -2193,7 +2193,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                 mysql_cursor.execute(PURDUE_CHECK_QUEUE_QUERY)
                 result = mysql_cursor.fetchone()
                 if result['requestId'] != request_id or result['runNumber'] != run_number:
-                    logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['run_number']} purdue"
+                    logger.info(f"Currently request_id: {result['requestId']}, run_number: {result['runNumber']} purdue"
                                 f" supp is prior in the queue and might initiated soon. So, checking again after "
                                 f"{PURDUE_SUPP_WAITING_TIME} sec")
                     time.sleep(PURDUE_SUPP_WAITING_TIME)
@@ -2206,8 +2206,8 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                                              f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/"])
                     result.check_returncode()
 
-                    logger.error(f"Making purdue status as Completed in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
-                                 f", run_number: {result['run_number']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number)}  ")
+                    logger.info(f"Making purdue status as Completed in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
+                                 f", run_number: {result['runNumber']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number)}  ")
                     mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number))
                     in_queue = False
         purdue_cleansed_table = main_request_table + "_PURDUE_CLEANSED"
@@ -2227,7 +2227,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
     except Exception as e:
         logger.error(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
         logger.error(f"Making purdue status as Error in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
-                     f", run_number: {result['run_number']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number)}  ")
+                     f", run_number: {result['runNumber']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number)}  ")
         mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number))
         raise Exception(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
     finally:
@@ -2267,6 +2267,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
                 batch = stats[i:i + batch_size]
                 mysql_cursor.executemany(insert_query, batch)
             logger.info(f"Successfully populated stats in {stats_table} mysql table")
+
     except Exception as e:
         logger.error(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
@@ -2274,4 +2275,5 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
 

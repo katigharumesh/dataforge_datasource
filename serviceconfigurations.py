@@ -303,7 +303,7 @@ PURDUE_SUPP_LOOKUP_TABLE = "PURDUE_SUPP_LOOKUP"
 PURDUE_INSERT_QUERY = f"insert into {PURDUE_SUPP_LOOKUP_TABLE}(requestId,runNumber,status) values (%s,%s,%s)"
 PURDUE_CHECK_INPROGRESS_QUERY = f"select requestId,runNumber from {PURDUE_SUPP_LOOKUP_TABLE} where status='I'"
 PURDUE_CHECK_QUEUE_QUERY = f"select requestId,runNumber from {PURDUE_SUPP_LOOKUP_TABLE} where status='W' LIMIT 1"
-PURDUE_UPDATE_STATUS_QUERY = f"update {PURDUE_SUPP_LOOKUP_TABLE} set status='%s' where requestId= %s and runNumber= %s"
+PURDUE_UPDATE_STATUS_QUERY = f"update {PURDUE_SUPP_LOOKUP_TABLE} set status=%s where requestId= %s and runNumber= %s"
 PURDUE_SUPP_WAITING_TIME = 90
 
 
