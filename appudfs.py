@@ -1230,8 +1230,8 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     else:
         match_or_filter_source_details = {}
     match_or_filter_sources = []
-    #if len(match_or_filter_source_details) == 0:
-    if match_or_filter_source_details['DataSource'] == [] and match_or_filter_source_details['ByField'] == []:
+    if len(match_or_filter_source_details) == 0:
+    #if match_or_filter_source_details['DataSource'] == [] and match_or_filter_source_details['ByField'] == []:
         main_logger.info(f"No {type_of_request} sources are chosen.")
         if type_of_request == "SUPPRESS_MATCH":
             update_default_values(type_of_request, main_request_table, main_logger)
