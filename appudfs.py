@@ -31,14 +31,15 @@ def load_input_source(type_of_request, source, main_request_details):
         source_sub_type = source['sourceSubType']
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
-        input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
+        if input_data is not None:
+            input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
         consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{log_path}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
         consumer_logger.info(f"Processing task: {str(source)}")
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
-        if source_id == "0" and data_source_id != "":
+        if source_id == 0 and data_source_id is not None:
             return tuple([data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger), mapping_id])
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -128,6 +129,7 @@ def load_input_source(type_of_request, source, main_request_details):
             raise Exception("Unknown source_type selected")
 
     except Exception as e:
+        print(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
         consumer_logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
         raise Exception(f"Exception occurred: Please look into this. {str(e)}"+ str(traceback.format_exc()))
     finally:
@@ -1226,7 +1228,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     if type_of_request == "SUPPRESS_FILTER":
         key_to_fetch = 'filterDataSources'
     if filter_details[key_to_fetch] is not None:
-        match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]))
+        match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]).strip('"').replace("'", '"'))
     else:
         match_or_filter_source_details = {}
     match_or_filter_sources = []
@@ -1240,7 +1242,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
         if 'DataSource' in match_or_filter_source_details.keys():
             data_source_filter_list = list(match_or_filter_source_details['DataSource'])
             for i in data_source_filter_list:
-                data_source_details_dict = json.loads(str(i))
+                data_source_details_dict = json.loads(str(i).strip('"').replace("'", '"'))
                 data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
                 columns = data_source_details_dict['columns']
                 match_or_filter_sources.append(tuple([data_source_table_name, columns, 'DataSource']))
