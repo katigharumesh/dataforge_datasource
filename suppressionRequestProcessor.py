@@ -66,7 +66,7 @@ class Suppression_Request:
                         main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                         break
                     main_logger.info("Calling function ... load_input_source")
-                    self.sources_loaded.append(load_input_source("SUPPRESSION_REQUEST" ,source, main_request_details))
+                    self.sources_loaded.append(load_input_source("SUPPRESSION_REQUEST", source, main_request_details))
                     sources_queue.task_done()  # Notify the queue that the task is done
                 else:
                     break
@@ -205,6 +205,8 @@ class Suppression_Request:
             # Performing Purdue suppression
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
+
+            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
             #Offer downloading and suppression
             main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")

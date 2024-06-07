@@ -175,7 +175,7 @@ UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
                              f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
-                             f'a.filterId,a.offerSuppressionIds,a.purdueSuppression  from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.filterId,a.offerSuppressionIds,a.purdueSuppression,a.groupingColumns  from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
@@ -305,3 +305,6 @@ PURDUE_CHECK_INPROGRESS_QUERY = f"select requestId,runNumber from {PURDUE_SUPP_L
 PURDUE_CHECK_QUEUE_QUERY = f"select requestId,runNumber from {PURDUE_SUPP_LOOKUP_TABLE} where status='W' LIMIT 1"
 PURDUE_UPDATE_STATUS_QUERY = f"update {PURDUE_SUPP_LOOKUP_TABLE} set status='%s' where requestId= %s and runNumber= %s"
 PURDUE_SUPP_WAITING_TIME = 90
+
+
+STATS_LIMIT = 5000

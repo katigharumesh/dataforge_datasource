@@ -2162,7 +2162,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         os.system(f"rm {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        sf_cursor.execute(f"create temporary stage purdue_stage_{request_id}_{run_number}")
+        sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}")
         sf_cursor.execute(f"copy into @purdue_stage_{request_id}_{run_number} from (select distinct EMAIL_MD5 from "
                           f"{main_request_table} where do_matchStatus!='NON_MATCH' and do_suppressionStatus='CLEAN') "
                           f"FILE_FORMAT=(TYPE=CSV COMPRESSION=GZIP)")
@@ -2210,12 +2210,13 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                                  f", run_number: {result['run_number']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number)}  ")
                     mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number))
                     in_queue = False
-        sf_cursor.execute(f"create temporary stage purdue_stage_{request_id}_{run_number}_cleansed")
+        purdue_cleansed_table = main_request_table + "_PURDUE_CLEANSED"
+        sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}_cleansed")
         sf_cursor.execute(f"put file://{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/* @purdue_stage_{request_id}_{run_number}_cleansed")
-        sf_cursor.execute(f"create transient table {main_request_table}_purdue_cleansed(email_md5 varchar)")
-        sf_cursor.execute(f"copy into {main_request_table}_purdue_cleansed from @purdue_stage_{request_id}_{run_number}_cleansed")
+        sf_cursor.execute(f"create or replace transient table {purdue_cleansed_table}(email_md5 varchar)")
+        sf_cursor.execute(f"copy into {purdue_cleansed_table} from @purdue_stage_{request_id}_{run_number}_cleansed")
         sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM (select "
-                          f"c.email_md5 from {main_request_table} c left join {main_request_table}_purdue_cleansed d "
+                          f"c.email_md5 from {main_request_table} c left join {purdue_cleansed_table} d "
                           f"on c.email_md5=d.email_md5 where d.email_md5 is null) b WHERE a.email_md5=b.email_md5 and "
                           f"a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
@@ -2236,3 +2237,41 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor):
+    try:
+        grouping_columns = main_request_details['groupingColumns']
+        stats_table = main_request_table + "_STATS"
+        create_stats_table_query = f"create table if not exists {stats_table}(count int(11), " \
+                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar)"
+        logger.info(f"Creating stats table in mysql DB. Executing Query: {create_stats_table_query}")
+        mysql_cursor.execute(create_stats_table_query)
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        stats_pulling_query = f"select count(1),{grouping_columns} from {main_request_table} group by {grouping_columns}"
+        logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
+        sf_cursor.execute(stats_pulling_query)
+        stats = sf_cursor.fetchall()
+        if len(stats) > STATS_LIMIT:
+            logger.info(f"Observed {str(len(stats))} stats records are being returned. Due to {str(STATS_LIMIT)} stats "
+                        f"records limit, skipping the stats population in {stats_table} mysql table.")
+            mysql_cursor.execute(f"alter table {stats_table} add column error_desc text after count")
+            mysql_cursor.execute(f"insert into {stats_table}(count,error_desc) values(-1,'{str(STATS_LIMIT)} records limit"
+                                 f" reached')")
+        else:
+            insert_query = f"INSERT INTO {stats_table} (count,{grouping_columns}) VALUES " \
+                           f"(%s, {', '.join(['%s'] * len(str(grouping_columns).split(',')))})"
+            # Insert data in batches
+            batch_size = 1000  # Adjust batch size if necessary
+            for i in range(0, len(stats), batch_size):
+                batch = stats[i:i + batch_size]
+                mysql_cursor.executemany(insert_query, batch)
+            logger.info(f"Successfully populated stats in {stats_table} mysql table")
+    except Exception as e:
+        logger.error(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
