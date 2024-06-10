@@ -2077,7 +2077,7 @@ class FeedLevelSuppression():
                         self.logger.info(f"QUERY ::{query}")
                         sfcur.execute("ALTER SESSION SET ERROR_ON_NONDETERMINISTIC_MERGE=false;")
                         sfcur.execute(query)
-                        if not self.summary:
+                        if self.summary:
                             query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where do_suppressionStatus !='CLEAN' AND do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
                         else:
                             query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where do_suppressionStatus ='CLEAN' AND do_matchStatus!='NON_MATCH');"
@@ -2152,23 +2152,23 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         logger.info(f"Purdue suppression initiated.")
         request_id = main_request_details['id']
         run_number = main_request_details['runNumber']
-        os.makedirs(f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/", exist_ok=True)
-        os.system(f"rm {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*")
+        os.makedirs(f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/", exist_ok=True)
+        os.system(f"rm {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}")
         sf_cursor.execute(f"copy into @purdue_stage_{request_id}_{run_number} from (select distinct EMAIL_MD5 from "
                           f"{main_request_table} where do_matchStatus!='NON_MATCH' and do_suppressionStatus='CLEAN') "
                           f"FILE_FORMAT=(TYPE=CSV COMPRESSION=GZIP)")
-        logger.info(f"Copying .gz files from stage to {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/ path")
-        sf_cursor.execute(f"get @purdue_stage_{request_id}_{run_number}/*.gz "
-                          f"file://{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
-        logger.info(f"Unzipping .gz files in {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
-        os.system(f"gunzip {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.gz")
-        logger.info(f"Copying {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv files into"
-                    f" single file {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
-        os.system(f"cat {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv"
-                  f" > {SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+        logger.info(f"Copying .gz files from stage to {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/ path")
+        sf_cursor.execute(f"get @purdue_stage_{request_id}_{run_number} "
+                          f"file://{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
+        logger.info(f"Unzipping .gz files in {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
+        os.system(f"gunzip {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.gz")
+        logger.info(f"Copying {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv files into"
+                    f" single file {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+        os.system(f"cat {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv"
+                  f" > {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         logger.info(f"Inserting into Purdue lookup table. Executing: {PURDUE_INSERT_QUERY,(request_id,run_number,'W')}")
@@ -2196,8 +2196,8 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                     mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY,('I', request_id, run_number))
 
                     result = subprocess.run(["/bin/sh", "-x", f"{SUPP_SCRIPT_PATH}/purdue_supp.sh",
-                                             f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}",
-                                             f"{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/"])
+                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}",
+                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/"])
                     result.check_returncode()
 
                     logger.info(f"Making purdue status as Completed in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
@@ -2206,7 +2206,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                     in_queue = False
         purdue_cleansed_table = main_request_table + "_PURDUE_CLEANSED"
         sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}_cleansed")
-        sf_cursor.execute(f"put file://{SUPP_LOG_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/* @purdue_stage_{request_id}_{run_number}_cleansed")
+        sf_cursor.execute(f"put file://{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/* @purdue_stage_{request_id}_{run_number}_cleansed")
         sf_cursor.execute(f"create or replace transient table {purdue_cleansed_table}(email_md5 varchar)")
         sf_cursor.execute(f"copy into {purdue_cleansed_table} from @purdue_stage_{request_id}_{run_number}_cleansed")
         sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM (select "
