@@ -2075,11 +2075,12 @@ class FeedLevelSuppression():
                     self.logger.info(f"{method}Executing Query {query} ")
                     with SnowflakeContextManager(self.sfcon) as sfcur:
                         self.logger.info(f"QUERY ::{query}")
+                        sfcur.execute("ALTER SESSION SET ERROR_ON_NONDETERMINISTIC_MERGE=false;")
                         sfcur.execute(query)
                         if not self.summary:
-                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
+                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where do_suppressionStatus !='CLEAN' AND do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
                         else:
-                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where a.do_suppressionStatus !='CLEAN' AND a.do_matchStatus!='NON_MATCH');"
+                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where do_suppressionStatus ='CLEAN' AND do_matchStatus!='NON_MATCH');"
                         sfcur.execute(query1)
                         json_data=sfcur.fetchone()
         self.logger.info(f"{method} has ended")
@@ -2112,12 +2113,12 @@ class FeedLevelSuppression():
     # Invoke this method to apply feed level suppressions
     def applyFeedLevelSuppression(self) -> bool:
         self.logger.info(f"Running feed level supppressions applyFeedLevelSuppression():::{datetime.now()}")
-        json_data = None
+        json_data = []
         try:
             listids = self.getDistinctListid()
             livefeedpojos = self.getLiveFeedDetails(listids)
             for livefeedpojo in livefeedpojos:
-                json_data=self.updateGlobalTable(livefeedpojo)
+                json_data = self.updateGlobalTable(livefeedpojo)
         except Exception as e:
             self.logger.info(f"Exception occurred in: applyFeedLevelSuppression() Please look into this....{str(e)}")
             return False , str(e)
