@@ -939,6 +939,11 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar")
                 sf_cursor.execute(f"update {temp_input_source_table} set email_md5 = md5(email_id)")
+        if 'isp' in str(filter_match_fields).lower().split(','):
+            sf_cursor.execute(f"update {temp_input_source_table} set isp=split_part(email_id,'@',-1)")
+        else:
+            sf_cursor.execute(f"alter table {temp_input_source_table} add column isp varchar")
+            sf_cursor.execute(f"update {temp_input_source_table} set isp=split_part(email_id,'@',-1)")
         sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -2243,7 +2248,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = main_request_details['groupingColumns']
         stats_table = main_request_table + "_STATS"
         create_stats_table_query = f"create table if not exists {stats_table}(count int(11), " \
-                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar)"
+                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar(128)"
         logger.info(f"Creating stats table in mysql DB. Executing Query: {create_stats_table_query}")
         mysql_cursor.execute(create_stats_table_query)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
