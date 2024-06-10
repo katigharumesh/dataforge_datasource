@@ -1868,7 +1868,7 @@ class MysqlContextManager:
         self.mysqlcon = mysqlcon
 
     def __enter__(self):
-        self.cur = self.mysqlcon.cursor()
+        self.cur = self.mysqlcon.cursor(dictionary = True)
         return self.cur
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -2082,7 +2082,7 @@ class FeedLevelSuppression():
                         else:
                             query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where do_suppressionStatus ='CLEAN' AND do_matchStatus!='NON_MATCH');"
                         sfcur.execute(query1)
-                        json_data=sfcur.fetchone()
+                        json_data=sfcur.fetchone()[0]
         self.logger.info(f"{method} has ended")
         return json_data
     def getDistinctListid(self) -> str:
@@ -2113,7 +2113,7 @@ class FeedLevelSuppression():
     # Invoke this method to apply feed level suppressions
     def applyFeedLevelSuppression(self) -> bool:
         self.logger.info(f"Running feed level supppressions applyFeedLevelSuppression():::{datetime.now()}")
-        json_data = []
+        json_data = None
         try:
             listids = self.getDistinctListid()
             livefeedpojos = self.getLiveFeedDetails(listids)
@@ -2138,7 +2138,7 @@ def apply_global_fp_feed_level_suppression(table_name, result_breakdown_flag, lo
         #logger.info(f"Fetched result : {result}")
         sf_cursor = sf_conn.cursor()
         current_count = get_record_count(f"{table_name}", sf_cursor)
-        return True , [result] ,current_count
+        return True, result,current_count
     except Exception as e:
         return False , str(result)+"::::"+str(e), 0
     finally:
