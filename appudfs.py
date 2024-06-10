@@ -2030,7 +2030,7 @@ class FeedLevelSuppression():
                     runQue = True
 
                 if supCode[i] == 'BOSUPR':
-                    bounjoinCnd = f' left outer join LIST_PROCESSING.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA hrdboun on lower(a.EMAIL_ID)= lower(hrdboun.EMAIL) left outer join LIST_PROCESSING.APT_CUSTOM_GLOBAL_SOFTINACTIVE sftboun on lower(a.EMAIL_ID)= lower(sftboun.EMAIL) '
+                    bounjoinCnd = f' left outer join GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA hrdboun on lower(a.EMAIL_ID)= lower(hrdboun.EMAIL) left outer join GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE sftboun on lower(a.EMAIL_ID)= lower(sftboun.EMAIL) '
                     bouncond = ' and (hrdboun.EMAIL is not null or sftboun.EMAIL is not null)'
                     runQue = True
 
