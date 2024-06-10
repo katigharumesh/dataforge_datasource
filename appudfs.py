@@ -2071,7 +2071,7 @@ class FeedLevelSuppression():
                 if len(dpunsubCode) > 0:
                     dpjoinCnd = f' {dpjoinCnd} and dpunsub.type not in ({dpunsubCode}) '
                 if runQue:
-                    query = f"merge into {self.tablename} as a using (select distinct a.*  from {self.tablename} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.email)  when matched then update set do_suppressionStatus='{supCode[i]}'"
+                    query = f"merge into {self.tablename} as a using (select distinct a.*  from {self.tablename} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.EMAIL_ID)  when matched then update set do_suppressionStatus='{supCode[i]}'"
                     self.logger.info(f"{method}Executing Query {query} ")
                     with SnowflakeContextManager(self.sfcon) as sfcur:
                         self.logger.info(f"QUERY ::{query}")
