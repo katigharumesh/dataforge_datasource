@@ -2082,7 +2082,7 @@ class FeedLevelSuppression():
                         else:
                             query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where do_suppressionStatus ='CLEAN' AND do_matchStatus!='NON_MATCH');"
                         sfcur.execute(query1)
-                        json_data=sfcur.fetchone()[0]
+                        json_data=json.loads(sfcur.fetchone()[0])
         self.logger.info(f"{method} has ended")
         return json_data
     def getDistinctListid(self) -> str:
