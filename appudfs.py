@@ -965,7 +965,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
                           f"information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         aliased_insert_fields = sf_cursor.fetchone()[0]
         sf_cursor.execute(f"update {temp_input_source_table} set list_id = '00000'  where list_id is null or "
-                          f"list_id='NULL' or list_id='null' or list_id='' ")
+                          f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
             source_join_fields = 'and a.do_inputSource = b.do_inputSource'
             filter_name = 'Feed and File level duplicates suppression'
@@ -1146,11 +1146,14 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
                                     f"from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where " \
                                     f"CHANNEL='{main_request_details['channelName']}' and " \
                                     f"PROCESS_TYPE='C' and STATUS='A')"
-        main_logger.info(f"Fetching channel {type_of_request} adhoc file. Executing query: {fetch_channel_adhoc_files} ")
+        main_logger.info(f"Fetching channel {type_of_request} adhoc files. Executing query: {fetch_channel_adhoc_files} ")
         channel_files_db_cursor.execute(fetch_channel_adhoc_files)
         channel_file_details = channel_files_db_cursor.fetchall()
         channel_files_db_cursor.close()
         channel_files_db_conn.close()
+        if channel_file_details is None:
+            main_logger.info(f"No channel {type_of_request} adhoc files were configured. ")
+            return counts_before_filter
         main_logger.info(f"Channel {type_of_request} adhoc files retrieved. Files details - {channel_file_details} ")
         main_logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -1792,21 +1795,6 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             sf_conn.close()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor ):
     logger.info("channel_suppression execution started.")
     channel = main_request_details['channelName']
@@ -1995,7 +1983,7 @@ class FeedLevelSuppression():
             if f"{i}" in supCode.keys():
                 if supCode[i] == 'CUNSUB':
                     cunsubCode = f"{cunsubCode},'CLEAN'"
-                    cjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
+                    cjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
                                f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0)'
                     wccond = ' and cunsub.email is not null '
                     isChannelUnsub = True
@@ -2003,7 +1991,7 @@ class FeedLevelSuppression():
 
                 if supCode[i] == 'CABUSE':
                     cabuseCode = f"{cabuseCode},'CLEAN'"
-                    cjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
+                    cjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
                                f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0 ) '
                     wccond = ' and cunsub.email is not null '
                     isChannelAbuse = True
@@ -2011,43 +1999,43 @@ class FeedLevelSuppression():
 
                 if supCode[i] == 'FUNSUB':
                     funsubCode = f"{funsubCode},'CLEAN'"
-                    fjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF funsub on lower(a.EMAIL_ID)= lower(funsub.email)' \
+                    fjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF funsub on lower(a.EMAIL_ID)= lower(funsub.email)' \
                                f' and funsub.channelid={liveFeed.channelId}  and a.LIST_ID=funsub.listid '
                     wfcond = ' and funsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'ZABUSE':
                     zunsubCode = f"{zunsubCode},'CLEAN'"
-                    zjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF zunsub on lower(a.EMAIL_ID)= lower(zunsub.email)' \
+                    zjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF zunsub on lower(a.EMAIL_ID)= lower(zunsub.email)' \
                                f' and zunsub.channelid={liveFeed.channelId} and a.LIST_ID=zunsub.listid and zunsub.source=\'zh\''
                     zhcond = ' and zunsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'DUNSUB':
                     dpunsubCode = f"{dpunsubCode},'CLEAN'"
-                    dpjoinCnd = f' left outer join GLOBALFP_UNSUBS_SF dpunsub on lower(a.EMAIL_ID)= lower(dpunsub.email)' \
+                    dpjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF dpunsub on lower(a.EMAIL_ID)= lower(dpunsub.email)' \
                                 f'  and dpunsub.datapartnerid={liveFeed.dataPartnerId} '
                     dpcond = ' and dpunsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'GCOMPR':
-                    gjoinCnd = ' left outer join APT_CUSTDOD_GLOBAL_COMPLAINER_EMAILS_SF gunsub on lower(a.EMAIL_ID)= lower(gunsub.email)'
+                    gjoinCnd = ' left outer join LIST_PROCESSING.APT_CUSTDOD_GLOBAL_COMPLAINER_EMAILS_SF gunsub on lower(a.EMAIL_ID)= lower(gunsub.email)'
                     gcond = ' and gunsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'CANADA':
-                    cdjoinCnd = ' left outer join PFM_FLUENT_REGISTRATIONS_CANADA_SF cdunsub on lower( a.EMAIL_ID)= lower(cdunsub.EMAIL)' \
+                    cdjoinCnd = ' left outer join LIST_PROCESSING.PFM_FLUENT_REGISTRATIONS_CANADA_SF cdunsub on lower( a.EMAIL_ID)= lower(cdunsub.EMAIL)' \
                                 ' '
                     cdcond = ' and cdunsub.EMAIL is not null '
                     runQue = True
 
                 if supCode[i] == 'BOSUPR':
-                    bounjoinCnd = f' left outer join APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA hrdboun on lower(a.EMAIL_ID)= lower(hrdboun.EMAIL) left outer join APT_CUSTOM_GLOBAL_SOFTINACTIVE sftboun on lower(a.EMAIL_ID)= lower(sftboun.EMAIL) '
+                    bounjoinCnd = f' left outer join LIST_PROCESSING.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA hrdboun on lower(a.EMAIL_ID)= lower(hrdboun.EMAIL) left outer join LIST_PROCESSING.APT_CUSTOM_GLOBAL_SOFTINACTIVE sftboun on lower(a.EMAIL_ID)= lower(sftboun.EMAIL) '
                     bouncond = ' and (hrdboun.EMAIL is not null or sftboun.EMAIL is not null)'
                     runQue = True
 
                 if supCode[i] == 'CCMP':
-                    ccpajoinCnd = f' left outer join GLOBALFP_CHANNEL_COMPLAINERS ccmp on lower(a.EMAIL_ID)= lower(ccmp.EMAIL) '
+                    ccpajoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_CHANNEL_COMPLAINERS ccmp on lower(a.EMAIL_ID)= lower(ccmp.EMAIL) '
                     ccpacond = f' and ccmp.channelid={liveFeed.channelId} and a.LIST_ID={liveFeed.listId} and ccmp.EMAIL is not null '
                     runQue = True
 
