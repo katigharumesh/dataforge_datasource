@@ -2206,9 +2206,9 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         logger.info(f"Unzipping .gz files in {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/")
         os.system(f"gunzip {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.gz")
         logger.info(f"Copying {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv files into"
-                    f" single file {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+                    f" single file {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}.csv")
         os.system(f"cat {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/*.csv"
-                  f" > {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}")
+                  f" > {SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}.csv")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         logger.info(f"Inserting into Purdue lookup table. Executing: {PURDUE_INSERT_QUERY,(request_id,run_number,'W')}")
@@ -2235,24 +2235,22 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
                     logger.info("Currently, purdue supp requests queue is zero. So, making this request as in-progress")
                     mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY,('I', request_id, run_number))
 
-                    result = subprocess.run(["/bin/sh", "-x", f"{SUPP_SCRIPT_PATH}/purdue_supp.sh",
-                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}",
-                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/"])
-                    result.check_returncode()
+                    response = subprocess.run(["/bin/sh", "-x", f"{SUPP_SCRIPT_PATH}/purdue_supp.sh",
+                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_INPUT_FILES/Purdue_main_file_{request_id}_{run_number}.csv",
+                                             f"{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_SUPP_FILES/"])
+                    response.check_returncode()
 
                     logger.info(f"Making purdue status as Completed in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
                                  f", run_number: {result['runNumber']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number)}  ")
                     mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('C', request_id, run_number))
                     in_queue = False
-        purdue_cleansed_table = main_request_table + "_PURDUE_CLEANSED"
-        sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}_cleansed")
-        sf_cursor.execute(f"put file://{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_CLEANSED_FILES/* @purdue_stage_{request_id}_{run_number}_cleansed")
-        sf_cursor.execute(f"create or replace transient table {purdue_cleansed_table}(email_md5 varchar)")
-        sf_cursor.execute(f"copy into {purdue_cleansed_table} from @purdue_stage_{request_id}_{run_number}_cleansed")
-        sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM (select "
-                          f"c.email_md5 from {main_request_table} c left join {purdue_cleansed_table} d "
-                          f"on c.email_md5=d.email_md5 where d.email_md5 is null) b WHERE a.email_md5=b.email_md5 and "
-                          f"a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
+        purdue_supp_table = main_request_table + "_PURDUE_SUPP"
+        sf_cursor.execute(f"create or replace temporary stage purdue_stage_{request_id}_{run_number}_supp")
+        sf_cursor.execute(f"put file://{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_SUPP_FILES/suppression_list--PG_Unsubscribe_List_*.txt @purdue_stage_{request_id}_{run_number}_supp")
+        sf_cursor.execute(f"create or replace transient table {purdue_supp_table}(email_md5 varchar)")
+        sf_cursor.execute(f"copy into {purdue_supp_table} from @purdue_stage_{request_id}_{run_number}_supp")
+        sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM {purdue_supp_table} b "
+                          f"WHERE a.email_md5=b.email_md5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
                                                                       ,'Purdue',counts_before_filter,counts_after_filter,0,0))
