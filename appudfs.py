@@ -1939,12 +1939,11 @@ class LiveFeed:
 
 class FeedLevelSuppression():
 
-    # snowflake cursor,mysql cursor,snowflake tablename,summary
-    def __init__(self, sfcon, mysqlcon, tablename,summary,logger):
+    def __init__(self, sfcon, mysqlcon, main_request_table, result_breakdown,logger):
         self.sfcon = sfcon
-        self.tablename = tablename
+        self.main_request_table = main_request_table
         self.mysqlcon = mysqlcon
-        self.summary= summary
+        self.result_breakdown = result_breakdown
         self.logger = logger
 
     def getSuppressionCode(self):
@@ -2100,25 +2099,19 @@ class FeedLevelSuppression():
                 if len(dpunsubCode) > 0:
                     dpjoinCnd = f' {dpjoinCnd} and dpunsub.type not in ({dpunsubCode}) '
                 if runQue:
-                    query = f"merge into {self.tablename} as a using (select distinct a.*  from {self.tablename} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.EMAIL_ID)  when matched then update set do_suppressionStatus='{supCode[i]}'"
+                    query = f"merge into {self.main_request_table} as a using (select distinct a.*  from {self.main_request_table} a {cjoinCnd}  {fjoinCnd} {zjoinCnd} {cdjoinCnd} {gjoinCnd} {dpjoinCnd} {bounjoinCnd} {ccpajoinCnd} where  a.do_suppressionStatus ='CLEAN' AND a.do_matchStatus!='NON_MATCH' {wccond}  {wfcond} {zhcond} {cdcond} {gcond} {dpcond} {bouncond} {ccpacond} ) as b on lower(a.EMAIL_ID)=lower(b.EMAIL_ID)  when matched then update set do_suppressionStatus='{supCode[i]}'"
                     self.logger.info(f"{method}Executing Query {query} ")
                     with SnowflakeContextManager(self.sfcon) as sfcur:
                         self.logger.info(f"QUERY ::{query}")
                         sfcur.execute("ALTER SESSION SET ERROR_ON_NONDETERMINISTIC_MERGE=false;")
                         sfcur.execute(query)
-                        if self.summary:
-                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName',do_suppressionStatus,'countsBeforeFilter',(cumulative_difference+COUNT),'countsAfterFilter',cumulative_difference,'downloadCount',0,'insertCount',0))) AS json_data from (SELECT do_suppressionStatus,BEFORE,COUNT,BEFORE - SUM(COUNT) OVER (ORDER BY do_suppressionStatus DESC) AS cumulative_difference from (select do_suppressionStatus,(select count(*) from {self.tablename} )BEFORE,count(1)COUNT from {self.tablename} where do_suppressionStatus !='CLEAN' AND do_matchStatus!='NON_MATCH' group by 1 order by 3) c ORDER BY do_suppressionStatus DESC)"
-                        else:
-                            query1=f"select TO_JSON(ARRAY_AGG(OBJECT_CONSTRUCT('offerId','NA','filterType','Suppression','associateOfferId','NA','filterName','FeedLevelSuppression','countsBeforeFilter',countsBeforeFilter,'countsAfterFilter',countsAfterFilter,'downloadCount',0,'insertCount',0))) AS json_data from (select (select count(*) from {self.tablename} )countsBeforeFilter ,count(*)as countsAfterFilter from {self.tablename} where do_suppressionStatus ='CLEAN' AND do_matchStatus!='NON_MATCH');"
-                        sfcur.execute(query1)
-                        json_data=json.loads(sfcur.fetchone()[0])
         self.logger.info(f"{method} has ended")
         return json_data
     def getDistinctListid(self) -> str:
         listids = ""
         try:
             with SnowflakeContextManager(self.sfcon) as sfcur:
-                query = f" select distinct LIST_ID from {self.tablename} where LIST_ID is not NULL"
+                query = f" select distinct LIST_ID from {self.main_request_table} where LIST_ID is not NULL"
                 self.logger.info(f"QUERY :: {query}")
                 sfcur.execute(query)
                 listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
@@ -2130,7 +2123,7 @@ class FeedLevelSuppression():
     def getLiveFeedDetails(self, listids) -> list:
         liveFeedTbl = []
         with MysqlContextManager(self.mysqlcon) as mysqlcon:
-            query = f" select id ,feedName,listId,channelId,suppressionRuleIds,dataPartnerId from LIVE_FEED where active=true and listid in ({listids}) "
+            query = f" select id,feedName,listId,channelId,suppressionRuleIds,dataPartnerId from LIVE_FEED where active=true and listid in ({listids}) "
             self.logger.info(f"QUERY ::  {query}")
             mysqlcon.execute(query)
             rows = mysqlcon.fetchall()
@@ -2141,39 +2134,57 @@ class FeedLevelSuppression():
 
     # Invoke this method to apply feed level suppressions
     def applyFeedLevelSuppression(self) -> bool:
-        self.logger.info(f"Running feed level supppressions applyFeedLevelSuppression():::{datetime.now()}")
-        json_data = None
+        self.logger.info(f"Running feed level suppressions applyFeedLevelSuppression():::{datetime.now()}")
+        json_data = []
         try:
+            with SnowflakeContextManager(self.sfcon) as sfcur:
+                counts_before_filter = get_record_count(self.main_request_table, sfcur)
             listids = self.getDistinctListid()
             livefeedpojos = self.getLiveFeedDetails(listids)
             for livefeedpojo in livefeedpojos:
-                json_data = self.updateGlobalTable(livefeedpojo)
+                self.updateGlobalTable(livefeedpojo)
+            fetch_supp_codes = f" select name, code from LIVE_FEED_SUPPRESSION_RULE order by id "
+            with MysqlContextManager(self.mysqlcon) as mysqlcur:
+                mysqlcur.execute(fetch_supp_codes)
+                supp_codes = mysqlcur.fetchall()
+                for supp_code in supp_codes:
+                    filter_details = {}
+                    filter_details["offerId"], filter_details["filterType"], filter_details["associateOfferId"], \
+                        filter_details["downloadCount"], filter_details["insertCount"] = "NA", "Suppression", "NA", 0, 0
+                    with SnowflakeContextManager(self.sfcon) as sfcur:
+                        sf_query = f"select count(1) from {self.main_request_table} where do_suppressionStatus = '{supp_code[1]}'"
+                        sfcur.execute(sf_query)
+                        counts_after_filter = counts_before_filter - sfcur.fetchone()[0]
+                    filter_details["countsBeforeFilter"], filter_details["countsAfterFilter"], \
+                        filter_details["filterName"] = counts_before_filter, counts_after_filter, supp_code[1]
+                    json_data.append(filter_details)
+                    counts_before_filter = counts_after_filter
         except Exception as e:
             self.logger.info(f"Exception occurred in: applyFeedLevelSuppression() Please look into this....{str(e)}")
             return False , str(e)
         return True, json_data
 
 
-def apply_global_fp_feed_level_suppression(table_name, result_breakdown_flag, logger):
+def apply_global_fp_feed_level_suppression(main_request_table, result_breakdown_flag, logger):
     try:
         logger.info("Function initiated global_fp feed level suppression")
         mysql_con = mysql.connector.connect(**MYSQL_CONFIGS)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
-        fobj = FeedLevelSuppression(sf_conn, mysql_con, table_name,result_breakdown_flag,logger)
-        status , result = fobj.applyFeedLevelSuppression()
-        logger.info(f"Fetched result : {result}")
+        fobj = FeedLevelSuppression(sf_conn, mysql_con, main_request_table,result_breakdown_flag,logger)
+        status, result = fobj.applyFeedLevelSuppression()
+        logger.info(f"Fetched result: {result}")
         if not status:
-            return False , str(result), 0
+            return False, str(result), 0
         #logger.info(f"Fetched result : {result}")
         sf_cursor = sf_conn.cursor()
-        current_count = get_record_count(f"{table_name}", sf_cursor)
+        current_count = get_record_count(f"{main_request_table}", sf_cursor)
         return True, result,current_count
     except Exception as e:
-        return False , str(result)+"::::"+str(e), 0
+        return False, str(result)+"::::"+str(e), 0
     finally:
-            if 'connection' in locals() and sf_conn.is_connected():
-                sf_cursor.close()
-                sf_conn.close()
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 
 def purdue_suppression(main_request_details, main_request_table, logger, counts_before_filter):
