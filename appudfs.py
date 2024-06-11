@@ -261,34 +261,42 @@ class FileTransfer:
 
 
 
+def perform_conversion(local_file):
+    if local_file.endswith('.gz'):
+        temp_file = local_file + '.tmp'
+        with gzip.open(local_file, 'rb') as f_in, open(temp_file, 'wb') as f_out:
+            for line in f_in:
+                line = line.replace(b'\r\n', b'\n')
+                f_out.write(line)
+        os.rename(temp_file, local_file)
+    else:
+        # For regular text files
+        with fileinput.FileInput(local_file, inplace=True, mode='rb') as f:
+            for line in f:
+                line.replace(b'\r\n', b'\n')
+                #print(line.decode('utf-8'), end='')
 def requires_conversion(filename):
     """Check if dos2unix conversion is required."""
-    with open(filename, 'rb') as f:
-        for line in f:
-            if b'\r\n' in line:
-                return True
+    if filename.split(".")[-1] == ".gz":
+        with gzip.open(filename, 'rb') as f:
+            for line in f:
+                if b'\r\n' in line:
+                    return True
+    else:
+        with open(filename, 'rb') as f:
+            for line in f:
+                if b'\r\n' in line:
+                    return True
     return False
 
 
-def perform_conversion(filename):
-    """Perform dos2unix conversion."""
-    # Check if the file is gzipped
-    if filename.endswith('.gz'):
-        temp_file = filename + '.tmp'
-        with gzip.open(filename, 'rt') as f_in, open(temp_file, 'w') as f_out:
-            for line in f_in:
-                f_out.write(line.replace('\r\n', '\n'))
-        os.rename(temp_file, filename)
-    else:
-        # For regular text files
-        with fileinput.FileInput(filename, inplace=True) as f:
-            for line in f:
-                print(line.replace('\r\n', '\n'), end='')
-
-
 def validate_header(file, header, delimiter):
-    with open(file, 'r') as f:
-        first_line = f.readline()
+    if file.endswith('gz'):
+        with gzip.open(file, 'rb') as f:
+            first_line = f.readline().decode('utf-8')
+    else:
+        with open(file, 'r') as f:
+            first_line = f.readline()
     if len(first_line.split(delimiter)) == len(header.split(delimiter)):
         return True
     return False
@@ -366,16 +374,22 @@ class ProcessS3Files:
             key = '/'.join(file.split('/')[3:])
             obj = self.s3_client.get_object(Bucket=bucket_name, Key=key)
             streaming_body = obj['Body']
-            for line in streaming_body.iter_lines():
-                first_line = line.decode('utf-8')
-                break
-            if len(str(first_line).split(delimiter)) == len(header_value.split(delimiter)):
+
+            # Check if the file is gzipped
+            if file.endswith('.gz'):
+                with gzip.GzipFile(fileobj=streaming_body) as f:
+                    first_line = f.readline().decode('utf-8')  # Decode the byte string to a regular string
+            else:
+                first_line = streaming_body.read().decode('utf-8').split('\n', 1)[0]  # Read and decode the first line
+
+            # Ensure header is processed similarly
+            if len(first_line.split(delimiter)) == len(header_value.split(delimiter)):
                 return True
             else:
                 return False
         except Exception as e:
             print(f"Error occurred during header validation for {file} file. Error: {e}")
-
+            return False
 
 def process_file_type_request(type_of_request,request_id, source_table, run_number,schedule_id, source_sub_type, input_data_dict, mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname = None, port = None, username = None, password = None):
     try:
@@ -447,7 +461,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             file_details_list = []
             files_list = input_data_dict['filePath'].split(",")
             consumer_logger.info("File List: "+str(files_list))
-            if len(files_list) >= 1 :
+            if len(files_list) >= 1:
                 consumer_logger.info("There are one or more files with comma separated...")
                 for file in files_list:
                     file_details_dict = process_single_file(mapping_id, temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
@@ -548,10 +562,17 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
                     return file_details_dict
         if source_sub_type != 'A':
             source_obj.download_file(fully_qualified_file, temp_files_path + file)
-            if input_data_dict['isHeaderExists']:
-                line_count = sum(1 for _ in open(temp_files_path + file, 'r')) - 1
+            if file.split(".")[-1] =="gz":
+                if input_data_dict['isHeaderExists']:
+                    line_count = sum(1 for _ in gzip.open(temp_files_path + file, 'rb')) - 1
+                else:
+                    line_count = sum(1 for _ in gzip.open(temp_files_path + file, 'rb'))
             else:
-                line_count = sum(1 for _ in open(temp_files_path + file, 'r'))
+                if input_data_dict['isHeaderExists']:
+                    line_count = sum(1 for _ in open(temp_files_path + file, 'r')) - 1
+                else:
+                    line_count = sum(1 for _ in open(temp_files_path + file, 'r'))
+
             file_details_dict["count"] = line_count
         file_details_dict["filename"] = file
         file_details_dict["size"] = meta_data["size"]
@@ -1191,7 +1212,8 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
     except Exception as e:
         main_logger.error(f"Exception occurred while processing channel level {type_of_request} adhoc files. Please "
                           f"look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(str(e) + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while processing channel level {type_of_request} adhoc files. Please "
+                          f"look into this. {str(e)}" + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and channel_files_db_conn.is_connected():
             channel_files_db_cursor.close()
@@ -1328,8 +1350,8 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             logger.info(f"perform_filter_or_match method for {type_of_request} executed successfully...")
         return counts_after_filter
     except Exception as e:
-        logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(str(e) + str(traceback.format_exc()))
+        logger.error(f"Exception occurred at perform_filter_or_match method for {type_of_request}: Please look into this. {str(e)}" + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred at perform_filter_or_match method for {type_of_request}: Please look into this. {str(e)}" + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1811,7 +1833,7 @@ def channel_suppression(main_request_details, filter_details, source_table, logg
         status, results, current_count = apply_global_fp_feed_level_suppression(source_table,result_breakdown_flag, logger)
 
     if not status:
-        raise Exception('Exception occurred while performing channel_suppression. Please look into it.')
+        raise Exception(f'Exception occurred while performing channel_suppression. Please look into it. {results}')
     for result in results:
         result['requestId'], result['requestScheduledId'], result['runNumber'] = main_request_details['id'],\
             main_request_details['ScheduleId'], main_request_details['runNumber']
@@ -2237,7 +2259,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = main_request_details['groupingColumns']
         stats_table = main_request_table + "_STATS"
         create_stats_table_query = f"create table if not exists {stats_table}(count int(11), " \
-                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar(128)"
+                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar(128))"
         logger.info(f"Creating stats table in mysql DB. Executing Query: {create_stats_table_query}")
         mysql_cursor.execute(create_stats_table_query)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -2269,5 +2291,67 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+
+
+def add_table(main_request_details, filter_details, run_number):
+    table_msg = ''
+    if main_request_details['offerSuppressionIds'] is not None:
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        success_query = f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} WHERE STATUS='S' AND requestId= {main_request_details['id']} and runNumber ={run_number}"
+        mysql_cursor.execute(success_query)
+        successful_offers = mysql_cursor.fetchall()
+        table_msg += f"<br><br><b>Offers completed successfully</b>: {','.join([offer_details['OFFERID'] for offer_details in successful_offers])}"
+        failed_query = f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} WHERE STATUS='F' AND requestId= {main_request_details['id']} and runNumber ={run_number}"
+        mysql_cursor.execute(failed_query)
+        failed_offers = mysql_cursor.fetchall()
+        table_msg += f"<br><br><b>Offers got failed</b>:  {','.join([offer_details['OFFERID'] for offer_details in failed_offers])}"
+        mysql_cursor.close()
+    if filter_details['applyChannelFileMatch'] or filter_details['applyChannelFileSuppression']:
+        offer_mysql_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+        offer_mysql_cursor = offer_mysql_conn.cursor(dictionary=True)
+        query = f"select TABLE_NAME,FILENAME,DOWNLOAD_COUNT,INSERT_COUNT from SUPPRESSION_MATCH_FILES where STATUS='A' and ID in (select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where CHANNEL='{main_request_details['channelName']}' and PROCESS_TYPE='C' and STATUS='A') "
+        offer_mysql_cursor.execute(query)
+        channel_tables_dict = offer_mysql_cursor.fetchall()
+        if len(channel_tables_dict) != 0:
+            mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+            mysql_cursor = mysql_conn.cursor()
+            table_msg += "<br><br>Below are the channel level match/suppression stats for the request.<br>"
+            table_msg += """<table border="1"><thead><tr><th>Seq #</th><th>Filter Type</th><th>Filter Name</th><th>Associate Offer ID</th><th>Download Count</th><th>Insert Count</th><th>Count Before Filter</th><th>Count After Filter</th></tr></thead><tbody>"""
+            mysql_cursor.execute("SET @row_number=0")
+            query = f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' FROM SUPPRESSION_MATCH_DETAILED_STATS WHERE requestid = {main_request_details['id']} AND offerid IS NULL;"
+            mysql_cursor.execute(query)
+            table_details = mysql_cursor.fetchall()
+            mysql_cursor.close()
+            for row in table_details:
+                table_msg += "<tr>"
+                table_msg += "".join(row)
+                table_msg += "</tr>"
+            table_msg += "</tbody></table>"
+        else:
+            table_msg += "<br><br>Channel level match/suppression files are not available for the request."
+
+    if main_request_details['offerSuppressionIds'] is not None :
+        table_msg += "<br><br>Below are the offer wise stats for the request."
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor()
+        for offer in successful_offers:
+            offer = offer['OFFERID']
+            table_msg += f"<br><br><b>OFFER {offer} :</b><br><br>"
+            table_msg += """<table border="1"><thead><tr><th>Seq #</th><th>Filter Type</th><th>Filter Name</th><th>Associate Offer ID</th><th>Download Count</th><th>Insert Count</th><th>Count Before Filter</th><th>Count After Filter</th></tr></thead><tbody>"""
+            mysql_cursor.execute("SET @row_number=0;")
+            query = f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' FROM SUPPRESSION_MATCH_DETAILED_STATS WHERE requestid={main_request_details['id']} AND offerid={offer} ORDER BY lastupdated;"
+            mysql_cursor.execute(query)
+            table_details = mysql_cursor.fetchall()
+            mysql_cursor.close()
+            for row in table_details:
+                table_msg += "<tr>"
+                table_msg += "".join(row)
+                table_msg += "</tr>"
+            table_msg += "</tbody></table>"
+    return table_msg
+
+
 
 

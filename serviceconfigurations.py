@@ -277,27 +277,29 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
 
 
 # email notification configurations
+MAIL_HTML_FILE = SUPP_LOG_PATH+"/mail.html"
 
-FROM_EMAIL = "noreply-notifications@zetaglobal.com"
-#RECEPIENT_EMAILS = []
-EMAIL_SUBJECT = "Dataops {} {} {}"
+RECEPIENT_EMAILS = ['glenka@aptroid.com']
+EMAIL_SUBJECT = "Dataops {type_of_request} {request_name} {request_id}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
 MAIL_BODY = '''Hi Team,
-
+<br>
 This is a system generated mail, please do not reply.
-
+<br>
 Below are the request details.
-
-Request Type: {}
-Request Id: {}
-Run Number: {}
-Schedule Time: {}
-Status: {}
-
-
-Thanks,
+<br>
+Request Type: {request_type}<br>
+Request Id: {request_id}<br>
+Run Number: {run_number}<br>
+Schedule Time: {schedule_time}<br>
+Status: {status}<br>
+<br>
+{table} <!--FOR TABLE INSERTION-->
+<br>
+Thanks,<br>
 System Admin
 '''
+
 
 PURDUE_SUPP_LOOKUP_TABLE = "PURDUE_SUPP_LOOKUP"
 PURDUE_INSERT_QUERY = f"insert into {PURDUE_SUPP_LOOKUP_TABLE}(requestId,runNumber,status) values (%s,%s,%s)"

@@ -83,7 +83,7 @@ class Suppression_Request:
                 raise Exception(error_desc)
 
     # Main function
-    def suppression_request_processor(self, supp_request_id, run_number, schedule_time=None, notification_mails=""):
+    def suppression_request_processor(self, supp_request_id, run_number, schedule_time=None, notification_mails="",sendNotificationsFor="E",wasInActive=0):
         try:
             recipient_emails = RECEPIENT_EMAILS + notification_mails.split(',')
             os.makedirs(f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}", exist_ok=True)
@@ -101,10 +101,10 @@ class Suppression_Request:
             pid_file = SUPP_PID_FILE.replace('REQUEST_ID', str(supp_request_id))
             if os.path.exists(str(pid_file)):
                 main_logger.info("Script execution is already in progress, hence skipping the execution.")
-                send_mail(ERROR_EMAIL_SUBJECT.format("Suppression Request", str(main_request_details['name']), str(supp_request_id)),
-                          MAIL_BODY.format("Suppression Request", str(supp_request_id), str(run_number), str(schedule_time),
-                                           'E\nError Reason: Due to processing of another instance'),
-                          recipient_emails=recipient_emails, message_type='plain')
+                send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name= str(main_request_details['name']),request_id= str(supp_request_id)),
+                          MAIL_BODY.format(type_of_request="Suppression Request", request_id= str(supp_request_id), run_number= str(run_number), schedule_time= str(schedule_time),
+                                           status= 'E <br>Error Reason: Due to processing of another instance',table=''),
+                          recipient_emails=recipient_emails, message_type='html')
                 mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', 'Due to PID existence', supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
                 return
@@ -141,11 +141,11 @@ class Suppression_Request:
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
                                                               , supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-                send_mail(ERROR_EMAIL_SUBJECT.format("Suppression Request", str(main_request_details['name']), str(supp_request_id)),
-                          MAIL_BODY.format("Suppression Request", str(supp_request_id), str(run_number),
-                                           str(schedule_time),
-                                           f'E\nError Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'),
-                          recipient_emails=recipient_emails, message_type='plain')
+                send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id =str(supp_request_id)),
+                          MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),
+                                           schedule_time=(schedule_time), table ='',
+                                           status= f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'),
+                          recipient_emails=recipient_emails)
                 os.remove(pid_file)
                 return
             main_logger.info("All sources are successfully processed.")
@@ -237,20 +237,21 @@ class Suppression_Request:
             main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
-            send_mail(EMAIL_SUBJECT.format("Suppression Request", str(main_request_details['name']), str(supp_request_id)),
-                      MAIL_BODY.format("Suppression Request", str(supp_request_id), str(run_number), str(schedule_time),
-                                       'C'), recipient_emails=recipient_emails, message_type='plain')
+            if sendNotificationsFor == "A":
+                send_mail(EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
+                      MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
+                                       status ='C', table= add_table(main_request_details,filter_details,run_number)), recipient_emails=recipient_emails)
             end_time = time.time()
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,
-                                 ('E', '0', 'Error in Main function', supp_request_id, run_number))
+                                 ('E', '0', str(e), supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-            send_mail(ERROR_EMAIL_SUBJECT.format("Suppression Request", str(main_request_details['name']), str(supp_request_id)),
-                      MAIL_BODY.format("SUPPRESSION REQUEST", str(supp_request_id), str(run_number), str(schedule_time),
-                                       'E \nError Reason: Error in Main function'),recipient_emails=recipient_emails, message_type='plain')
+            send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
+                      MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
+                                       status= f"E <br>Error Reason: {str(e)}", table=''),recipient_emails=recipient_emails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
@@ -263,8 +264,10 @@ if __name__ == "__main__":
         run_number = "1"
         schedule_time = "2024-01-02 00:50:10"
         notification_mails = "glenka@aptroid.com"
+        sendNotificationsFor = "E"
+        wasInActive = 0
         supp_obj = Suppression_Request()
-        supp_obj.suppression_request_processor(supp_request_id, run_number, schedule_time, notification_mails)
+        supp_obj.suppression_request_processor(supp_request_id, run_number, schedule_time, notification_mails,sendNotificationsFor,wasInActive)
 
 
     except Exception as e:

@@ -34,7 +34,7 @@ class RequestPicker:
         logger.info(f"Request Processing Started .. {datetime.now()}")
         updateflag=None
         id = request[0]
-        startDate=str(request[4])
+        startDate=str(request[8])
         try:
             if startDate<=date:
                 mysqlcur = self.mysqlcon.cursor()
@@ -45,7 +45,7 @@ class RequestPicker:
                 updateflag=True
                 self.suppressionRequestSchedule(updateflag,request,requestList)
                 request_obj = Suppression_Request()
-                request_obj.suppression_request_processor(request[1],request[2]+1,request[3],request[4])
+                request_obj.suppression_request_processor(request[1],request[2]+1,request[3],request[4],request[5],request[6])
             else:
                 logger.info(f"Request Scheduled in Future.It will initiate from {startDate} .....")
             #mysqlcur.commit()
@@ -59,7 +59,7 @@ class RequestPicker:
         requestList=[]
         try:
             mysqlcur = self.mysqlcon.cursor()
-            requestquery = f"select id,requestId,runnumber , if(nextScheduleDue is NULL,now(),nextscheduleDue) as  nextscheduleDue, notificationMails,type,if(startDate is NULL,date(now()),startDate) as startDate,if(endDate is NULL,date(now()),endDate) as " \
+            requestquery = f"select id,requestId,runnumber , if(nextScheduleDue is NULL,now(),nextscheduleDue) as  nextscheduleDue, notificationMails,sendNotificationsFor,wasInActive,type,if(startDate is NULL,date(now()),startDate) as startDate,if(endDate is NULL,date(now()),endDate) as " \
                            f"endDate from {SUPP_SCHEDULE_TABLE} where status='W'  and if(nextScheduleDue is NULL,now(),nextscheduleDue)<=now() limit 5"
             logger.info(f"requestquery ::{requestquery}")
             mysqlcur.execute("SET time_zone = 'UTC';")
