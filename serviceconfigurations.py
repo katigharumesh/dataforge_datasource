@@ -188,7 +188,7 @@ FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId
                             f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s and a.isDeleted=0'
 
 SUPP_DATASET_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order by runNumber desc limit 1"
-SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
+#SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
 
 DELETE_SUPPRESSION_MATCH_DETAILED_STATS = f" delete from {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} where requestId= %s" \
                                           f" and runNumber = %s "
@@ -201,7 +201,7 @@ FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressi
                                "stateSuppression,zipSuppression,filterDataSources," \
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
-                               "postalFields from {} where id = {}"
+                               "postalFields,isActive from {} where id = {}"
 
 INSERT_REQUEST_OFFERS = f"insert into {SUPPRESSION_REQUEST_OFFERS_TABLE} (requestId,requestScheduledId,runNumber,offerId) values (%s,%s,%s,%s)"
 

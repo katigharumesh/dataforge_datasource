@@ -164,7 +164,10 @@ class Suppression_Request:
             main_logger.info(f"Fetching filter details, by executing: {FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId'])}")
             mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId']))
             filter_details = mysql_cursor.fetchone()
+
             main_logger.info(f"Filter details: {str(filter_details)}")
+            if not filter_details['isActive']:
+                raise Exception(f"Selected Filter:: {filter_details['name']} is Inactive Please check.The request is set to Error...")
 
             # Performing isps filtration
             current_count = isps_filtration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)

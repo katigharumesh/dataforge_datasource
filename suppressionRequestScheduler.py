@@ -59,8 +59,8 @@ class RequestPicker:
         requestList=[]
         try:
             mysqlcur = self.mysqlcon.cursor()
-            requestquery = f"select id,requestId,runnumber , if(nextScheduleDue is NULL,now(),nextscheduleDue) as  nextscheduleDue, notificationMails,sendNotificationsFor,wasInActive,type,if(startDate is NULL,date(now()),startDate) as startDate,if(endDate is NULL,date(now()),endDate) as " \
-                           f"endDate from {SUPP_SCHEDULE_TABLE} where status='W'  and if(nextScheduleDue is NULL,now(),nextscheduleDue)<=now() limit 5"
+            requestquery = f"select a.id,a.requestId,a.runnumber , if(a.nextScheduleDue is NULL,now(),a.nextscheduleDue) as  nextscheduleDue, a.notificationMails,a.sendNotificationsFor,a.wasInActive,a.type,if(a.startDate is NULL,date(now()),a.startDate) as startDate,if(a.endDate is NULL,date(now()),a.endDate) as " \
+                           f"endDate from {SUPP_SCHEDULE_TABLE} a join {SUPP_REQUEST_TABLE} b on a.requestId=b.id where status='W' and b.isActive = 1  and if(a.nextScheduleDue is NULL,now(),a.nextscheduleDue)<=now() limit 5"
             logger.info(f"requestquery ::{requestquery}")
             mysqlcur.execute("SET time_zone = 'UTC';")
             mysqlcur.execute(requestquery)

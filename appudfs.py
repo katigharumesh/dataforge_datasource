@@ -910,6 +910,13 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
     try:
         logger.info(f"Selected Dataset as source for {type_of_request}")
         # fetch latest runNUmber
+        logger.info("Checking for Dataset active status.. ")
+        status_query = f"select isActive from {DATASET_TABLE} where id = %s limit 1"
+        logger.info(f" executing query: {status_query, (datasource_id,)}")
+        mysql_cursor.execute(status_query, (datasource_id,))
+        result = mysql_cursor.fetchone()
+        if not result['isActive']:
+            raise Exception(f"Given Dataset_id :: {datasource_id} is not actively working. So making this request error.")
         logger.info(f" executing query: {SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
         mysql_cursor.execute(SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,))
         result = mysql_cursor.fetchone()
