@@ -1364,6 +1364,29 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             sf_cursor.close()
             sf_conn.close()
 
+def validate_remaining_data(main_request_details, main_request_table, mysql_cursor, logger, current_count):
+    try:
+        counts_before_filter = current_count
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        sf_query = f"update {main_request_table} set do_matchStatus = 'Remaining_Data' where do_matchStatus='NON_MATCH'" \
+                   f" and do_suppressionStatus='CLEAN'"
+        logger.info(f"Validating remaining non-matched data. Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
+        counts_after_filter = get_record_count(main_request_table, sf_cursor)
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                             (main_request_details['id'], main_request_details['ScheduleId'],
+                              main_request_details['runNumber'], 'NA', 'Match', 'NA', 'Validating remaining non-matched data',
+                              counts_before_filter, counts_after_filter, 0, 0))
+        logger.info(f"Successfully validated remaining non-matched data.")
+        return counts_after_filter
+    except Exception as e:
+        logger.error(f"Exception occurred while validating remaining data. Please look into this. {str(e)}" + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while validating remaining data. Please look into this. {str(e)}" + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 def offer_download_and_suppression(offer_id, main_request_details, filter_details, main_request_table, current_count,
                                    affiliate_channel, offer_table_prefix):

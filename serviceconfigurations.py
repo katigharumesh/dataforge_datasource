@@ -201,7 +201,7 @@ FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressi
                                "stateSuppression,zipSuppression,filterDataSources," \
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
-                               "postalFields,isActive from {} where id = {}"
+                               "postalFields,isActive,outputRemainingData from {} where id = {}"
 
 INSERT_REQUEST_OFFERS = f"insert into {SUPPRESSION_REQUEST_OFFERS_TABLE} (requestId,requestScheduledId,runNumber,offerId) values (%s,%s,%s,%s)"
 

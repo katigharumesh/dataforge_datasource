@@ -170,7 +170,8 @@ class Suppression_Request:
                 raise Exception(f"Selected Filter:: {filter_details['name']} is Inactive Please check.The request is set to Error...")
 
             # Performing isps filtration
-            current_count = isps_filtration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
+            if filter_details['id'] != 0:
+                current_count = isps_filtration(current_count, main_request_table, filter_details['isps'], main_logger, mysql_cursor, main_request_details)
 
             # Profile non-match filtration
             current_count = profile_non_match_filtration(current_count, main_request_table, main_logger, mysql_cursor, main_request_details)
@@ -183,27 +184,29 @@ class Suppression_Request:
             if filter_details['applyChannelFileSuppression']:
                 current_count = channel_adhoc_files_match_and_suppress("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
-            # Data Match Selection
-            current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+            if filter_details['id'] != 0:
+                # Data Match Selection
+                current_count = perform_match_or_filter_selection("SUPPRESS_MATCH",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
-            # Validate Remaining Data (Non-matched)
-            #if main_request_details['remainingData']:
+                # Validate Remaining Data (Non-matched)
+                if filter_details['outputRemainingData']:
+                    current_count = validate_remaining_data(main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
-            # Data filter Selection
-            current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+                # Data filter Selection
+                current_count = perform_match_or_filter_selection("SUPPRESS_FILTER",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
-            # Performing channel suppression
-            current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger,
-                                                mysql_cursor)
-            # Performing ZIPs suppression
-            if filter_details['zipSuppression']:
-                current_count = state_and_zip_suppression('ZIP_SUPPRESSION', current_count, main_request_table,
-                                                          filter_details['zipSuppression'], main_logger, mysql_cursor, main_request_details)
+                # Performing channel suppression
+                current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger,
+                                                    mysql_cursor)
+                # Performing ZIPs suppression
+                if filter_details['zipSuppression']:
+                    current_count = state_and_zip_suppression('ZIP_SUPPRESSION', current_count, main_request_table,
+                                                              filter_details['zipSuppression'], main_logger, mysql_cursor, main_request_details)
 
-            # Performing States suppression
-            if filter_details['stateSuppression']:
-                current_count = state_and_zip_suppression('STATE_SUPPRESSION', current_count, main_request_table,
-                                                          filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
+                # Performing States suppression
+                if filter_details['stateSuppression']:
+                    current_count = state_and_zip_suppression('STATE_SUPPRESSION', current_count, main_request_table,
+                                                              filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
 
             # Performing Purdue suppression
             if main_request_details['purdueSuppression']:
@@ -235,8 +238,9 @@ class Suppression_Request:
                     for future in concurrent.futures.as_completed(futures):
                         main_logger.info("Request offers processing is completed.")
 
-            #data append
-            data_append(filter_details, main_request_table, main_logger)
+            if filter_details['id'] != 0:
+                #data append
+                data_append(filter_details, main_request_table, main_logger)
 
             main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
