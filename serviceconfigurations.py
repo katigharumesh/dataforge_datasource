@@ -288,7 +288,7 @@ This is a system generated mail, please do not reply.
 <br>
 Below are the request details.
 <br>
-Request Type: {request_type}<br>
+Request Type: {type_of_request}<br>
 Request Id: {request_id}<br>
 Run Number: {run_number}<br>
 Schedule Time: {schedule_time}<br>
