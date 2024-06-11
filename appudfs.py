@@ -2270,6 +2270,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
             sf_cursor.close()
             sf_conn.close()
 
+
 def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor):
     try:
         grouping_columns = main_request_details['groupingColumns']
