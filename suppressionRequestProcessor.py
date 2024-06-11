@@ -212,19 +212,20 @@ class Suppression_Request:
             populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
             #Offer downloading and suppression
-            main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
-            offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
-            offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
-            main_logger.info(f"Channel/Offer static files DB mysql connection acquired successfully...")
-            offer_files_db_cursor.execute(FETCH_AFFILIATE_CHANNEL_VALUE,(main_request_details['channelName'],))
-            affiliate_channel_details = offer_files_db_cursor.fetchone()
-            main_logger.info(f"Fetched affiliate channel details successfully, affiliate_channel_details: {affiliate_channel_details }")
-            affiliate_channel = affiliate_channel_details['channelvalue']
-            offer_table_prefix = affiliate_channel_details['table_prefix']
-            main_logger.info(f"Closing Channel/Offer static files DB mysql connection")
-            offer_files_db_cursor.close()
-            offer_files_db_conn.close()
             if main_request_details['offerSuppressionIds'] is not None:
+                main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
+                offer_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
+                offer_files_db_cursor = offer_files_db_conn.cursor(dictionary=True)
+                main_logger.info(f"Channel/Offer static files DB mysql connection acquired successfully...")
+                offer_files_db_cursor.execute(FETCH_AFFILIATE_CHANNEL_VALUE, (main_request_details['channelName'],))
+                affiliate_channel_details = offer_files_db_cursor.fetchone()
+                main_logger.info(
+                    f"Fetched affiliate channel details successfully, affiliate_channel_details: {affiliate_channel_details}")
+                affiliate_channel = affiliate_channel_details['channelvalue']
+                offer_table_prefix = affiliate_channel_details['table_prefix']
+                main_logger.info(f"Closing Channel/Offer static files DB mysql connection")
+                offer_files_db_cursor.close()
+                offer_files_db_conn.close()
                 main_logger.info("Request offers processing is initiated.")
                 offers_list = str(main_request_details['offerSuppressionIds']).split(',')
                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_OFFER_THREADS_COUNT) as executor:
