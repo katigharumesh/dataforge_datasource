@@ -2298,7 +2298,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
 
 def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor):
     try:
-        grouping_columns = main_request_details['groupingColumns']
+        grouping_columns = str(main_request_details['groupingColumns'])
         stats_table = main_request_table + "_STATS"
         create_stats_table_query = f"create table if not exists {stats_table}(count int(11), " \
                                    f"{str(grouping_columns).replace(',',' varchar(128),')} varchar(128))"
@@ -2335,63 +2335,131 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             sf_conn.close()
 
 
-
 def add_table(main_request_details, filter_details, run_number):
     table_msg = ''
-    if main_request_details['offerSuppressionIds'] is not None:
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor(dictionary=True)
-        success_query = f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} WHERE STATUS='S' AND requestId= {main_request_details['id']} and runNumber ={run_number}"
-        mysql_cursor.execute(success_query)
-        successful_offers = mysql_cursor.fetchall()
-        table_msg += f"<br><br><b>Offers completed successfully</b>: {','.join([offer_details['OFFERID'] for offer_details in successful_offers])}"
-        failed_query = f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} WHERE STATUS='F' AND requestId= {main_request_details['id']} and runNumber ={run_number}"
-        mysql_cursor.execute(failed_query)
-        failed_offers = mysql_cursor.fetchall()
-        table_msg += f"<br><br><b>Offers got failed</b>:  {','.join([offer_details['OFFERID'] for offer_details in failed_offers])}"
-        mysql_cursor.close()
-    if filter_details['applyChannelFileMatch'] or filter_details['applyChannelFileSuppression']:
-        offer_mysql_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
-        offer_mysql_cursor = offer_mysql_conn.cursor(dictionary=True)
-        query = f"select TABLE_NAME,FILENAME,DOWNLOAD_COUNT,INSERT_COUNT from SUPPRESSION_MATCH_FILES where STATUS='A' and ID in (select FILE_ID from OFFER_CHANNEL_SUPPRESSION_MATCH_FILES where CHANNEL='{main_request_details['channelName']}' and PROCESS_TYPE='C' and STATUS='A') "
-        offer_mysql_cursor.execute(query)
-        channel_tables_dict = offer_mysql_cursor.fetchall()
-        if len(channel_tables_dict) != 0:
-            mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-            mysql_cursor = mysql_conn.cursor()
-            table_msg += "<br><br>Below are the channel level match/suppression stats for the request.<br>"
-            table_msg += """<table border="1"><thead><tr><th>Seq #</th><th>Filter Type</th><th>Filter Name</th><th>Associate Offer ID</th><th>Download Count</th><th>Insert Count</th><th>Count Before Filter</th><th>Count After Filter</th></tr></thead><tbody>"""
-            mysql_cursor.execute("SET @row_number=0")
-            query = f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' FROM SUPPRESSION_MATCH_DETAILED_STATS WHERE requestid = {main_request_details['id']} AND offerid IS NULL;"
-            mysql_cursor.execute(query)
-            table_details = mysql_cursor.fetchall()
-            mysql_cursor.close()
-            for row in table_details:
-                table_msg += "<tr>"
-                table_msg += "".join(row)
-                table_msg += "</tr>"
-            table_msg += "</tbody></table>"
-        else:
-            table_msg += "<br><br>Channel level match/suppression files are not available for the request."
+    def connect_db(config):
+        retries = 5
+        while retries > 0:
+            try:
+                conn = mysql.connector.connect(**config)
+                if conn.is_connected():
+                    return conn
+            except mysql.connector.Error:
+                retries -= 1
+                time.sleep(1)  # Wait before retrying
+        raise Exception("Failed to connect to the database after multiple retries.")
 
-    if main_request_details['offerSuppressionIds'] is not None :
+    if main_request_details['offerSuppressionIds'] is not None:
+        main_conn = connect_db(MYSQL_CONFIGS)
+        try:
+            with main_conn.cursor(dictionary=True) as mysql_cursor:
+                success_query = (f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} "
+                                 f"WHERE STATUS='S' AND requestId= {main_request_details['id']} "
+                                 f"AND runNumber ={run_number}")
+                mysql_cursor.execute(success_query)
+                successful_offers = mysql_cursor.fetchall()
+                table_msg += (f"<br><br><b>Offers completed successfully</b>: "
+                              f"{','.join([offer_details['OFFERID'] for offer_details in successful_offers])}")
+
+                failed_query = (f"SELECT OFFERID FROM {SUPPRESSION_REQUEST_OFFERS_TABLE} "
+                                f"WHERE STATUS='F' AND requestId= {main_request_details['id']} "
+                                f"AND runNumber ={run_number}")
+                mysql_cursor.execute(failed_query)
+                failed_offers = mysql_cursor.fetchall()
+                table_msg += (f"<br><br><b>Offers got failed</b>:  "
+                              f"{','.join([offer_details['OFFERID'] for offer_details in failed_offers])}")
+        finally:
+            main_conn.close()
+
+    if filter_details['applyChannelFileMatch'] or filter_details['applyChannelFileSuppression']:
+        offer_conn = connect_db(CHANNEL_OFFER_FILES_DB_CONFIG)
+        try:
+            with offer_conn.cursor(dictionary=True) as offer_mysql_cursor:
+                query = (f"SELECT TABLE_NAME, FILENAME, DOWNLOAD_COUNT, INSERT_COUNT FROM SUPPRESSION_MATCH_FILES "
+                         f"WHERE STATUS='A' AND ID IN "
+                         f"(SELECT FILE_ID FROM OFFER_CHANNEL_SUPPRESSION_MATCH_FILES "
+                         f"WHERE CHANNEL='{main_request_details['channelName']}' AND PROCESS_TYPE='C' AND STATUS='A')")
+                offer_mysql_cursor.execute(query)
+                channel_tables_dict = offer_mysql_cursor.fetchall()
+
+                if channel_tables_dict:
+                    main_conn = connect_db(MYSQL_CONFIGS)
+                    try:
+                        with main_conn.cursor() as mysql_cursor:
+                            table_msg += "<br><br>Below are the channel level match/suppression stats for the request.<br>"
+                            table_msg += """<table border="1">
+                                            <thead>
+                                            <tr>
+                                            <th>Seq #</th><th>Filter Type</th><th>Filter Name</th>
+                                            <th>Associate Offer ID</th><th>Download Count</th>
+                                            <th>Insert Count</th><th>Count Before Filter</th>
+                                            <th>Count After Filter</th></tr></thead><tbody>"""
+
+                            mysql_cursor.execute("SET @row_number=0")
+                            query = (f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', "
+                                     f"CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', "
+                                     f"CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', "
+                                     f"CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', "
+                                     f"CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', "
+                                     f"CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', "
+                                     f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
+                                     f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
+                                     f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
+                                     f"WHERE requestid = {main_request_details['id']} AND offerid=0")
+                            mysql_cursor.execute(query)
+                            table_details = mysql_cursor.fetchall()
+
+                            for row in table_details:
+                                table_msg += "<tr>"
+                                table_msg += "".join(row)
+                                table_msg += "</tr>"
+                            table_msg += "</tbody></table>"
+                    finally:
+                        main_conn.close()
+                else:
+                    table_msg += "<br><br>Channel level match/suppression files are not available for the request."
+        finally:
+            offer_conn.close()
+
+    if main_request_details['offerSuppressionIds'] is not None:
         table_msg += "<br><br>Below are the offer wise stats for the request."
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor()
-        for offer in successful_offers:
-            offer = offer['OFFERID']
-            table_msg += f"<br><br><b>OFFER {offer} :</b><br><br>"
-            table_msg += """<table border="1"><thead><tr><th>Seq #</th><th>Filter Type</th><th>Filter Name</th><th>Associate Offer ID</th><th>Download Count</th><th>Insert Count</th><th>Count Before Filter</th><th>Count After Filter</th></tr></thead><tbody>"""
-            mysql_cursor.execute("SET @row_number=0;")
-            query = f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' FROM SUPPRESSION_MATCH_DETAILED_STATS WHERE requestid={main_request_details['id']} AND offerid={offer} ORDER BY lastupdated;"
-            mysql_cursor.execute(query)
-            table_details = mysql_cursor.fetchall()
-            mysql_cursor.close()
-            for row in table_details:
-                table_msg += "<tr>"
-                table_msg += "".join(row)
-                table_msg += "</tr>"
-            table_msg += "</tbody></table>"
+        main_conn = connect_db(MYSQL_CONFIGS)
+        try:
+            with main_conn.cursor() as mysql_cursor:
+                for offer in successful_offers:
+                    offer_id = offer['OFFERID']
+                    table_msg += f"<br><br><b>OFFER {offer_id} :</b><br><br>"
+                    table_msg += """<table border="1">
+                                    <thead>
+                                    <tr>
+                                    <th>Seq #</th><th>Filter Type</th><th>Filter Name</th>
+                                    <th>Associate Offer ID</th><th>Download Count</th>
+                                    <th>Insert Count</th><th>Count Before Filter</th>
+                                    <th>Count After Filter</th></tr></thead><tbody>"""
+
+                    mysql_cursor.execute("SET @row_number=0")
+                    query = (f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', "
+                             f"CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', "
+                             f"CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', "
+                             f"CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', "
+                             f"CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', "
+                             f"CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', "
+                             f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
+                             f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
+                             f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
+                             f"WHERE requestid={main_request_details['id']} AND offerid={offer_id} "
+                             f"ORDER BY lastupdated;")
+                    mysql_cursor.execute(query)
+                    table_details = mysql_cursor.fetchall()
+
+                    for row in table_details:
+                        table_msg += "<tr>"
+                        table_msg += "".join(row)
+                        table_msg += "</tr>"
+                    table_msg += "</tbody></table>"
+        finally:
+            main_conn.close()
+
     return table_msg
 
 
