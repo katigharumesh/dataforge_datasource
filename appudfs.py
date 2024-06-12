@@ -1333,9 +1333,11 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 match_fields = filter_source[1].split(",")
                 source_table = filter_source[0]
                 filter_name = source_table
-                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM ({source_table}) b WHERE "
+                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM {source_table} b WHERE "
                 sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
             sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
+            if type_of_request == "SUPPRESS_MATCH":
+                sf_update_table_query += f" AND a.do_suppressionStatus = 'CLEAN' "
             if type_of_request == "SUPPRESS_FILTER":
                 sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
             logger.info(f"Executing query: {sf_update_table_query}")
