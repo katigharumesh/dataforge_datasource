@@ -156,6 +156,7 @@ SUPPRESSION_REQUEST_FILTERS_TABLE = "SUPPRESSION_REQUEST_FILTERS"
 SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
 SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE = "SUPPRESSION_PROFILE_TABLES_LOOKUP"
+SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE = "SUPPRESSION_REQUEST_INPUT_SOURCES"
 
 SUPP_FILE_DETAILS_TABLE = 'SUPPRESSION_REQUEST_FILE_DETAILS'
 
@@ -202,6 +203,8 @@ FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressi
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
                                "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
                                "postalFields,isActive,outputRemainingData from {} where id = {}"
+
+INSERT_INPUT_SOURCES = f"insert into {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE}(requestId,inputSource) values (%s,%s)"
 
 INSERT_REQUEST_OFFERS = f"insert into {SUPPRESSION_REQUEST_OFFERS_TABLE} (requestId,requestScheduledId,runNumber,offerId) values (%s,%s,%s,%s)"
 

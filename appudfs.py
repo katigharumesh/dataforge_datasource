@@ -2334,6 +2334,24 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             sf_cursor.close()
             sf_conn.close()
 
+def populate_input_sources_table(main_request_details, main_request_table, logger, mysql_cursor):
+    try:
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        sf_query = f"select distinct do_inputSource from {main_request_table}"
+        logger.info(f"Fetching input source details from request table. Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
+        input_sources = sf_cursor.fetchall()
+        for input_source in input_sources:
+            mysql_cursor.execute(INSERT_INPUT_SOURCES,(main_request_details['id'],input_source[0]))
+        logger.info(f"Successfully populated input source details in {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table.")
+    except Exception as e:
+        logger.error(f"Exception occurred while populating {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while populating {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table. {str(e)} " + str(traceback.format_exc()))
+    finally:
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
 
 def add_table(main_request_details, filter_details, run_number):
     table_msg = ''
