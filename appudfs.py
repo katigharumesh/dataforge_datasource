@@ -1179,7 +1179,7 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
         channel_file_details = channel_files_db_cursor.fetchall()
         channel_files_db_cursor.close()
         channel_files_db_conn.close()
-        if channel_file_details is None:
+        if channel_file_details is None or len(channel_file_details) == 0:
             main_logger.info(f"No channel {type_of_request} adhoc files were configured. ")
             return counts_before_filter
         main_logger.info(f"Channel {type_of_request} adhoc files retrieved. Files details - {channel_file_details} ")
