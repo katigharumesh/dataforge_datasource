@@ -15,6 +15,7 @@ from threading import Thread
 import threading
 import mysql.connector
 import snowflake.connector
+from snowflake.connector import DictCursor
 import concurrent.futures
 import pytz
 import requests
@@ -285,22 +286,33 @@ MAIL_HTML_FILE = SUPP_LOG_PATH+"/mail.html"
 RECEPIENT_EMAILS = ['glenka@aptroid.com']
 EMAIL_SUBJECT = "Dataops {type_of_request} {request_name} {request_id}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
-MAIL_BODY = '''Hi Team,
-<br>
-This is a system generated mail, please do not reply.
-<br>
-Below are the request details.
-<br>
-Request Type: {type_of_request}<br>
+MAIL_BODY = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Template</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; color: #333; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ border: 1px solid #dddddd; padding: 8px; text-align: left; }}
+    th {{ background-color: #f2f2f2; }}
+  </style>
+</head>
+<body>
+<p>Hi Team,<br>
+This is a system generated mail, please do not reply.<br>
+Below are the request details.</p><br>
+<p>Request Type: {type_of_request}<br>
 Request Id: {request_id}<br>
 Run Number: {run_number}<br>
 Schedule Time: {schedule_time}<br>
-Status: {status}<br>
+Status: {status}<br></p>
+<p>{table} </p><!--FOR TABLE INSERTION-->
 <br>
-{table} <!--FOR TABLE INSERTION-->
-<br>
-Thanks,<br>
-System Admin
+<p>Thanks,<br></p>
+<p>System Admin</p>
 '''
 
 
@@ -313,3 +325,5 @@ PURDUE_SUPP_WAITING_TIME = 90
 
 
 STATS_LIMIT = 5000
+SUPPRESSION_REQUEST_DATA_STATS_TABLE = "SUPPRESSION_REQUEST_DATA_STATS"
+INSERT_INTO_STATS_TABLE_QUERY = f"insert into {SUPPRESSION_REQUEST_DATA_STATS_TABLE} (requestId,requestScheduledId,runNumber,stats) values (%s,%s,%s,%s)"

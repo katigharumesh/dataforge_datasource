@@ -979,8 +979,8 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         logger.info(f"Deleting old detailed stats, if existent for request_id: {request_id} , run_number: {run_number} . "
                     f"Executing query: {DELETE_SUPPRESSION_MATCH_DETAILED_STATS},({request_id},{run_number}) ")
         mysql_cursor.execute(DELETE_SUPPRESSION_MATCH_DETAILED_STATS, (request_id, run_number))
-        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0)}")
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','INITIAL COUNT',0,counts_after_filter,0,0))
+        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial count',0,counts_after_filter,0,0)}")
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial count',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
 #Removing duplicates based on feed type
         logger.info(f"Performing deduplication based on feed level and request filter level configured "
@@ -1326,7 +1326,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                     filter['value'] = filter['value'].replace(',', ' and ')
                 if filter['searchType'] == '>=':
                     filter['value'] = f"current_date() - interval '{filter['value']} days'"
-                filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}"
+                filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}".replace("'",'"')
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
             else:
@@ -1399,7 +1399,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         channel = main_request_details['channelName']
         request_offer_log_path = f"{SUPP_LOG_PATH}/{str(request_id)}/{str(run_number)}"
         os.makedirs(f"{request_offer_log_path}", exist_ok=True)
-        offer_logger = create_logger(f"supp_request_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
+        offer_logger = create_logger(f"offer_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
                                     log_file_path=f"{request_offer_log_path}/",
                                     log_to_stdout=True)
         offer_logger.info(f"Processing started for offerid: {offer_id}")
@@ -1484,10 +1484,11 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                           f" A.ID=B.FILE_ID where B.CHANNEL='{channel}' and B.OFFER_ID in ({offers_list}) "
                                           f"and B.PROCESS_TYPE='O' and B.STATUS='A' AND A.FILE_TYPE='M' and  A.STATUS='A'")
             match_tables_list = offer_files_db_cursor.fetchall()
-            if len(match_tables_list) != 0:
+            if match_tables_list is not None and len(match_tables_list) != 0:
                 current_count = file_match_or_supp('Match', match_tables_list, current_count)
             else:
                 sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
+                offer_logger.info(f"Offer adhoc match files are not configured")
         else:
             sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
 
@@ -1497,8 +1498,10 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                           f"ON A.ID=B.FILE_ID where B.CHANNEL='{channel}' and B.OFFER_ID in ({offers_list})"
                                           f" and B.PROCESS_TYPE='O' and B.STATUS='A' AND A.FILE_TYPE='S' and  A.STATUS='A'")
             supp_tables_list = offer_files_db_cursor.fetchall()
-            if len(supp_tables_list) != 0:
+            if supp_tables_list is not None and len(supp_tables_list) != 0:
                 current_count = file_match_or_supp('Suppression', supp_tables_list, current_count)
+            else:
+                offer_logger.info(f"Offer adhoc supp files are not configured")
 
         # Cake suppression
         def cake_supp(filter_type, associate_offer_id, supp_table, current_count):
@@ -2299,37 +2302,28 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
 def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor):
     try:
         grouping_columns = str(main_request_details['groupingColumns'])
-        stats_table = main_request_table + "_STATS"
-        create_stats_table_query = f"create table if not exists {stats_table}(count int(11), " \
-                                   f"{str(grouping_columns).replace(',',' varchar(128),')} varchar(128))"
-        logger.info(f"Creating stats table in mysql DB. Executing Query: {create_stats_table_query}")
-        mysql_cursor.execute(create_stats_table_query)
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
-        sf_cursor = sf_conn.cursor()
-        stats_pulling_query = f"select count(1),{grouping_columns} from {main_request_table} group by {grouping_columns}"
+        sf_cursor = sf_conn.cursor(DictCursor)
+        stats_pulling_query = f"select count(1) as COUNT,{grouping_columns} from {main_request_table} group by {grouping_columns}"
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
         if len(stats) > STATS_LIMIT:
-            logger.info(f"Observed {str(len(stats))} stats records are being returned. Due to {str(STATS_LIMIT)} stats "
-                        f"records limit, skipping the stats population in {stats_table} mysql table.")
-            mysql_cursor.execute(f"alter table {stats_table} add column error_desc text after count")
-            mysql_cursor.execute(f"insert into {stats_table}(count,error_desc) values(-1,'{str(STATS_LIMIT)} records limit"
-                                 f" reached')")
+            logger.info(f"Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['requestScheduledId']),str(main_request_details['runNumber']),str({'COUNT':-1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}))}")
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['requestScheduledId']),str(main_request_details['runNumber']),str({'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'})))
         else:
-            insert_query = f"INSERT INTO {stats_table} (count,{grouping_columns}) VALUES " \
-                           f"(%s, {', '.join(['%s'] * len(str(grouping_columns).split(',')))})"
-            # Insert data in batches
-            batch_size = 1000  # Adjust batch size if necessary
-            for i in range(0, len(stats), batch_size):
-                batch = stats[i:i + batch_size]
-                mysql_cursor.executemany(insert_query, batch)
-            logger.info(f"Successfully populated stats in {stats_table} mysql table")
-
+            logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['requestScheduledId']), str(main_request_details['runNumber']), str(stats))}")
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['requestScheduledId']), str(main_request_details['runNumber']), str(stats)))
+            logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
         logger.error(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
     finally:
+        if 'connection' in locals() and mysql_conn.is_connected():
+            mysql_cursor.close()
+            mysql_conn.close()
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()

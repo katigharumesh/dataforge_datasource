@@ -86,16 +86,14 @@ class RequestPicker:
         logger.info(f"Thread Process Started :: {datetime.now()}")
         try:
             with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-                while True:
-                    waitingRequests = self.getrequests()
-                    if len(waitingRequests) > 0:
-                        logger.info(f"Waiting Requests are :: {waitingRequests}")
-                        for request in waitingRequests:
-                            resultList = [False]
-                            executor.submit(self.processrequests, request, resultList)
-                    else:
-                        logger.info(f"No waiting requests found ....")
-                        time.sleep(5)
+                waitingRequests = self.getrequests()
+                if len(waitingRequests) > 0:
+                    logger.info(f"Waiting Requests are :: {waitingRequests}")
+                    for request in waitingRequests:
+                        resultList = [False]
+                        executor.submit(self.processrequests, request, resultList)
+                else:
+                    logger.info(f"No waiting requests found ....")
                     time.sleep(5)
         except Exception as e:
             logger.error(f"Error in requestThreadProcess() :: {e}")

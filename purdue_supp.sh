@@ -1,4 +1,4 @@
-set -euo pipefail
+#set -euo pipefail
 
 INPUT_FILE=$1
 CLEANSED_DATA_PATH=$2

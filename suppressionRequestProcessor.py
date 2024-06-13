@@ -239,6 +239,8 @@ class Suppression_Request:
                                                offer_table_prefix) for offer in offers_list]
                     for future in concurrent.futures.as_completed(futures):
                         main_logger.info("Request offers processing is completed.")
+            else:
+                main_logger.info(f"No offers are configured for suppression.")
 
             if filter_details['id'] != 0:
                 #data append
