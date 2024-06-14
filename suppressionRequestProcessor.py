@@ -1,24 +1,7 @@
 import queue
-
 from serviceconfigurations import *
 from basicudfs import *
 from appudfs import *
-
-# global sources_loaded
-# global counts_before_filter
-# global counts_after_filter
-# counts_before_filter = 0
-# counts_after_filter = 0
-# sources_loaded = []
-# input_sources_count = 0
-# consumer_kill_condition = False
-# filter_and_match_file_sources_consumer_kill_condition = False
-# global match_or_filter_file_sources_loaded
-# match_or_filter_file_sources_loaded = []
-# global match_sources_loaded
-# match_sources_loaded = []
-# global filter_sources_loaded
-# filter_sources_loaded = []
 
 class Suppression_Request:
     def __init__(self):
@@ -83,7 +66,7 @@ class Suppression_Request:
                 raise Exception(error_desc)
 
     # Main function
-    def suppression_request_processor(self, supp_request_id, run_number, schedule_time=None, notification_mails="",sendNotificationsFor="E",wasInActive=0):
+    def suppression_request_processor(self, supp_request_id, run_number, schedule_time=None, notification_mails="",sendNotificationsFor="E"):
         try:
             recipient_emails = RECEPIENT_EMAILS + notification_mails.split(',')
             os.makedirs(f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}", exist_ok=True)
@@ -101,7 +84,7 @@ class Suppression_Request:
             pid_file = SUPP_PID_FILE.replace('REQUEST_ID', str(supp_request_id))
             if os.path.exists(str(pid_file)):
                 main_logger.info("Script execution is already in progress, hence skipping the execution.")
-                send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name= str(main_request_details['name']),request_id= str(supp_request_id)),
+                send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name= str(main_request_details['name']),request_id= str(supp_request_id)),
                           MAIL_BODY.format(type_of_request="Suppression Request", request_id= str(supp_request_id), run_number= str(run_number), schedule_time= str(schedule_time),
                                            status= 'E <br>Error Reason: Due to processing of another instance',table=''),
                           recipient_emails=recipient_emails, message_type='html')
@@ -141,7 +124,7 @@ class Suppression_Request:
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
                                                               , supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-                send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id =str(supp_request_id)),
+                send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id =str(supp_request_id)),
                           MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),
                                            schedule_time=(schedule_time), table ='',
                                            status= f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'),
@@ -212,7 +195,7 @@ class Suppression_Request:
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
 
-            #populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
             populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
@@ -250,7 +233,7 @@ class Suppression_Request:
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
             if sendNotificationsFor == "A":
-                send_mail(EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
+                send_mail("SUPP", supp_request_id, run_number, EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
                                        status ='C', table= add_table(main_request_details,filter_details,run_number)), recipient_emails=recipient_emails)
             end_time = time.time()
@@ -261,7 +244,7 @@ class Suppression_Request:
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,
                                  ('E', '0', str(e), supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-            send_mail(ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
+            send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
                                        status= f"E <br>Error Reason: {str(e)}", table=''),recipient_emails=recipient_emails)
             os.remove(pid_file)

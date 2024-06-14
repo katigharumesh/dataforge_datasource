@@ -4,13 +4,13 @@ from concurrent.futures import ThreadPoolExecutor
 from suppressionRequestProcessor import *
 import mysql.connector
 import logging
-from datetime import datetime
+from datetime import datetime,timezone
 import time
 import traceback
 
 logging.basicConfig(level=logging.INFO)
 logger = create_logger("scheduler_log", SUPP_LOG_PATH)
-date = str(datetime.now().date())
+date = str(datetime.now(timezone.utc).date())
 
 class RequestPicker:
     def __init__(self):
@@ -54,7 +54,7 @@ class RequestPicker:
                 updateflag = True
                 self.suppressionRequestSchedule(mysqlcon, updateflag, request, requestList)
                 request_obj = Suppression_Request()
-                request_obj.suppression_request_processor(request[1], request[2]+1, request[3], request[4], request[5], request[6])
+                request_obj.suppression_request_processor(request[1], request[2]+1, request[3], request[4], request[5])
             else:
                 logger.info(f"Request Scheduled in Future. It will initiate from {startDate} .....")
         except Exception as e:
@@ -69,7 +69,7 @@ class RequestPicker:
         mysqlcon = self.create_connection()
         try:
             mysqlcur = mysqlcon.cursor()
-            requestquery = f"select a.id, a.requestId, a.runnumber, if(a.nextScheduleDue is NULL, now(), a.nextscheduleDue) as nextscheduleDue, a.notificationMails, a.sendNotificationsFor, a.wasInActive, a.type, if(a.startDate is NULL, date(now()), a.startDate) as startDate, if(a.endDate is NULL, date(now()), a.endDate) as " \
+            requestquery = f"select a.id, a.requestId, a.runnumber, if(a.nextScheduleDue is NULL, now(), a.nextscheduleDue) as nextscheduleDue, a.notificationMails, a.sendNotificationsFor, a.type, if(a.startDate is NULL, date(now()), a.startDate) as startDate, if(a.endDate is NULL, date(now()), a.endDate) as " \
                            f"endDate from {SUPP_SCHEDULE_TABLE} a join {SUPP_REQUEST_TABLE} b on a.requestId = b.id where a.status = 'W' and b.isActive = 1 and if(a.nextScheduleDue is NULL, now(), a.nextscheduleDue) <= now() limit 5"
             logger.info(f"requestquery ::{requestquery}")
             mysqlcur.execute("SET time_zone = 'UTC'")

@@ -80,16 +80,21 @@ def delete_old_files(directory_path, main_logger, days_threshold=30):
 
 
 
-def send_mail(subject, message_body, sender_email=FROM_EMAIL, recipient_emails=RECEPIENT_EMAILS, message_type='html'):
+def send_mail(type_of_request, request_id, run_number, subject, message_body, sender_email=FROM_EMAIL, recipient_emails=RECEPIENT_EMAILS, message_type='html'):
     # Create a MIME multipart message
     message = MIMEMultipart('alternative')
     message['From'] = sender_email
     message['To'] = ', '.join(recipient_emails)
     message['Subject'] = subject
     # Add message body
-    message.attach(MIMEText(message_body, message_type,'utf-8'))
-    with open(MAIL_HTML_FILE,"w") as file:
+    if type_of_request == "DATASET":
+        mail_html_file = MAIL_HTML_FILE
+    else:
+        mail_html_file = SUPP_MAIL_HTML_FILE
+
+    with open(mail_html_file.format(request_id, run_number), "w", encoding='utf-8') as file:
         file.write(message_body)
+    message.attach(MIMEText(message_body, message_type, 'utf-8'))
     # Connect to localhost SMTP server
     with smtplib.SMTP('localhost', 25) as server:
         server.sendmail(sender_email, recipient_emails, message.as_string())

@@ -47,7 +47,7 @@ FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/r_logs/"   # local file path 
 PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
-MAIL_HTML_FILE = SCRIPT_PATH + "mail.html"
+MAIL_HTML_FILE = FILE_PATH + "mail_{}_{}.ftl"
 
 THREAD_COUNT = 4  # thread count
 
@@ -130,8 +130,7 @@ MAIN_DATASET_TABLE_PREFIX = 'DO_DATASET_'
 #                    'not exists in': 'not in', 'predefined daterange': '>='}
 
 FROM_EMAIL = "noreply-notifications@zetaglobal.com"
-RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
-SUBJECT = "PROXY TESTING REPORT"
+#RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where DO_INPUTSOURCE in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
@@ -281,9 +280,9 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
 
 
 # email notification configurations
-MAIL_HTML_FILE = SUPP_LOG_PATH+"/mail.html"
+SUPP_MAIL_HTML_FILE = SUPP_FILE_PATH+"/mail_{}_{}.ftl"
 
-RECEPIENT_EMAILS = ['glenka@aptroid.com']
+RECEPIENT_EMAILS = []
 EMAIL_SUBJECT = "Dataops {type_of_request} {request_name} {request_id}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
 MAIL_BODY = '''
@@ -303,14 +302,13 @@ MAIL_BODY = '''
 <body>
 <p>Hi Team,<br>
 This is a system generated mail, please do not reply.<br>
-Below are the request details.</p><br>
+Below are the request details.</p>
 <p>Request Type: {type_of_request}<br>
 Request Id: {request_id}<br>
 Run Number: {run_number}<br>
 Schedule Time: {schedule_time}<br>
 Status: {status}<br></p>
 <p>{table} </p><!--FOR TABLE INSERTION-->
-<br>
 <p>Thanks,<br></p>
 <p>System Admin</p>
 '''

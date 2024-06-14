@@ -270,10 +270,14 @@ def perform_conversion(local_file):
                 f_out.write(line)
         os.rename(temp_file, local_file)
     else:
+        try:
+            subprocess.run(['dos2unix', local_file], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error converting file {local_file}: {e}")
         # For regular text files
-        with fileinput.FileInput(local_file, inplace=True, mode='rb') as f:
-            for line in f:
-                line.replace(b'\r\n', b'\n')
+        # with fileinput.FileInput(local_file, inplace=True, mode='r') as f:
+        #     for line in f:
+        #         print(line.replace('\r\n', '\n'),end='')
                 #print(line.decode('utf-8'), end='')
 def requires_conversion(filename):
     """Check if dos2unix conversion is required."""
@@ -616,7 +620,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             sf_create_stage_query = sf_create_stage_query + file_format + header_exists + compression + ")"
             consumer_logger.info(f"Executing query: {sf_create_stage_query}")
             sf_cursor.execute(sf_create_stage_query)
-            sf_put_file_stage_query = f" PUT file://{temp_files_path}/{file} @{stage_name} "
+            sf_put_file_stage_query = f" PUT 'file://{temp_files_path}/{file}' @{stage_name} "
             consumer_logger.info(f"Executing query: {sf_put_file_stage_query}")
             sf_cursor.execute(sf_put_file_stage_query)
             field_delimiter = input_data_dict['delimiter']
@@ -888,7 +892,8 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                                     f"if(%s<=endDate,%s,%s),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep,dendDate))
-
+            if request_status == "C":
+                update_wasInactive_status_query = f"update {schedule_table} set wasInActive=0 where {column_to_fetch}={request_id}"
             if recurrenceType is None :
                 update_schedule_status = f"update {schedule_table} set status = '{request_status}' where id={id}"
                 logger.info(f"Updating Schedule table status for successful execution of adhoc type request, query : {update_schedule_status}")
@@ -914,8 +919,12 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         status_query = f"select isActive from {DATASET_TABLE} where id = %s limit 1"
         logger.info(f" executing query: {status_query, (datasource_id,)}")
         mysql_cursor.execute(status_query, (datasource_id,))
-        result = mysql_cursor.fetchone()
-        if not result['isActive']:
+        result1 = mysql_cursor.fetchone()
+        was_inactive_query = f"select wasInActive from {SCHEDULE_TABLE} where dataSourceId = %s order by id desc limit 1"
+        logger.info(f" executing query: {was_inactive_query, (datasource_id,)}")
+        mysql_cursor.execute(was_inactive_query, (datasource_id,))
+        result2 = mysql_cursor.fetchone()
+        if not result1['isActive'] or result2['wasInActive']:
             raise Exception(f"Given Dataset_id :: {datasource_id} is not actively working. So making this request error.")
         logger.info(f" executing query: {SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
         mysql_cursor.execute(SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,))
@@ -927,7 +936,7 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
             table_name = f"{MAIN_DATASET_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
             return table_name
         else:
-            raise Exception("Given dataSource is not actively working. So making this request error.")
+            raise Exception(f"Given  Dataset_id :: {datasource_id} is not actively working. So making this request error.")
 
     except Exception as e:
         logger.error("Exception occurred. Please look into this .... {str(e)}" + str(traceback.format_exc()))
@@ -1213,6 +1222,9 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
                                     f" where {column_to_update} = '{default_value}'"
             main_logger.info(f"Updating channel level non-matching records as 'Channel_file_match_filtered' in "
                              f"do_suppressionStatus column. Executing query: {sf_update_table_query} ")
+            sf_cursor.execute(sf_update_table_query)
+            sf_update_table_query = f" UPDATE {main_request_table} set do_matchStatus='NON_MATCH'"
+            main_logger.info(f"Updating do_matchStatus again as NON_MATCH in request table {main_request_table}. Executing query: {sf_update_table_query} ")
             sf_cursor.execute(sf_update_table_query)
         main_logger.info(f"Channel level {type_of_request} adhoc files are processed successfully...")
         return counts_after_filter
@@ -2304,18 +2316,18 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
-        stats_pulling_query = f"select count(1) as COUNT,{grouping_columns} from {main_request_table} group by {grouping_columns}"
+        stats_pulling_query = f"select count(1) as COUNT,{grouping_columns.replace('do_InputSource','do_InputSource as InputSource').replace('do_MatchSource','do_MatchSource as MatchSource')} from {main_request_table} group by {grouping_columns}"
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         if len(stats) > STATS_LIMIT:
-            logger.info(f"Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['requestScheduledId']),str(main_request_details['runNumber']),str({'COUNT':-1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}))}")
-            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['requestScheduledId']),str(main_request_details['runNumber']),str({'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'})))
+            logger.info(f"Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT':-1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}))}")
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'})))
         else:
-            logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['requestScheduledId']), str(main_request_details['runNumber']), str(stats))}")
-            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['requestScheduledId']), str(main_request_details['runNumber']), str(stats)))
+            logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
         logger.error(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
