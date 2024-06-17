@@ -1466,7 +1466,8 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
 
                 sf_update_table_query = f"update {main_request_table} a set {column_to_update} = '{static_file_table}' " \
                                         f"from {CHANNEL_OFFER_FILES_SF_SCHEMA}.{static_file_table} b where" \
-                                        f" a.EMAIL_MD5 = b.md5hash and {column_to_update} = '{default_value}'"
+                                        f" a.EMAIL_MD5 = b.md5hash and do_matchStatus != 'NON_MATCH' and " \
+                                        f"do_suppressionStatus = 'CLEAN' and {column_to_update} = '{default_value}'"
                 if type == "Suppression":
                     sf_update_table_query += f" AND a.do_matchStatus_{offer_id} != 'NON_MATCH' "
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
@@ -1499,10 +1500,12 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
             if match_tables_list is not None and len(match_tables_list) != 0:
                 current_count = file_match_or_supp('Match', match_tables_list, current_count)
             else:
-                sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
+                sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH' where"
+                                  f" do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN'")
                 offer_logger.info(f"Offer adhoc match files are not configured")
         else:
-            sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH'")
+            sf_cursor.execute(f"update {main_request_table} set do_matchStatus_{offer_id} = 'MATCH' where"
+                              f" do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN'")
 
         if filter_details['applyOfferFileSuppression']:
             offer_files_db_cursor.execute(f"select B.OFFER_ID,A.TABLE_NAME,A.FILENAME,A.DOWNLOAD_COUNT,A.INSERT_COUNT from"
@@ -1519,7 +1522,8 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         def cake_supp(filter_type, associate_offer_id, supp_table, current_count):
             counts_before_filter = current_count
             sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                    f"from {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash  and " \
+                                    f"from {OFFER_SUPP_TABLES_SF_SCHEMA}.{supp_table} b where a.EMAIL_MD5 = b.md5hash " \
+                                    f"and do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and " \
                                     f"a.do_matchStatus_{offer_id} != 'NON_MATCH' and do_suppressionStatus_{offer_id} = 'CLEAN'"
             offer_logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
@@ -1541,7 +1545,8 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
                                         f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
                                         f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
-                                        f"b where a.profile_id=b.profileid and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                        f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
+                                        f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
                                         f" do_suppressionStatus_{offer_id} = 'CLEAN'"
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
