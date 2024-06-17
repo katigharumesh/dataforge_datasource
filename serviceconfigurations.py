@@ -1,4 +1,4 @@
-# import statements
+#import statements
 
 import glob
 import json
@@ -157,6 +157,7 @@ SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
 SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE = "SUPPRESSION_PROFILE_TABLES_LOOKUP"
 SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE = "SUPPRESSION_REQUEST_INPUT_SOURCES"
+SUPPRESSION_REQUEST_FILES_INPUT_TABLE = "SUPPRESSION_REQUEST_FILES_INPUT"
 
 SUPP_FILE_DETAILS_TABLE = 'SUPPRESSION_REQUEST_FILE_DETAILS'
 
@@ -176,7 +177,8 @@ UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%
 
 FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.feedType,a.removeDuplicates,' \
                              f'a.FilterMatchFields,b.requestScheduledId as ScheduleId,b.runNumber,a.isCustomFilter,' \
-                             f'a.filterId,a.offerSuppressionIds,a.purdueSuppression,a.groupingColumns  from {SUPP_REQUEST_TABLE} a ' \
+                             f'a.filterId,a.offerSuppressionIds,a.purdueSuppression,a.groupingColumns,a.autoGenerateFiles' \
+                             f',a.ftpIds from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
 FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
@@ -325,3 +327,7 @@ PURDUE_SUPP_WAITING_TIME = 90
 STATS_LIMIT = 5000
 SUPPRESSION_REQUEST_DATA_STATS_TABLE = "SUPPRESSION_REQUEST_DATA_STATS"
 INSERT_INTO_STATS_TABLE_QUERY = f"insert into {SUPPRESSION_REQUEST_DATA_STATS_TABLE} (requestId,requestScheduledId,runNumber,stats) values (%s,%s,%s,%s)"
+
+INSERT_AUTO_GENERATE_FILE_DETAILS = f"insert into {SUPPRESSION_REQUEST_FILES_INPUT_TABLE} (requestId, offerIds, " \
+                                    f"groupingColumns, inputDataSources, ftpIds, createdDate, createdBy, updatedBy) " \
+                                    f"values(%s, %s, %s, %s, %s, UTC_TIMESTAMP(), %s, %s)"

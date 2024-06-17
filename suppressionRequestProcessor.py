@@ -195,9 +195,12 @@ class Suppression_Request:
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
 
-            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+            #populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
-            populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+            input_sources = populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+
+            if main_request_details['autoGenerateFiles']:
+                populate_file_generation_details(main_request_details, main_logger, mysql_cursor, input_sources)
 
             #Offer downloading and suppression
             if main_request_details['offerSuppressionIds'] is not None:

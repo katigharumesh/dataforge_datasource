@@ -1652,6 +1652,7 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
         for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
@@ -1711,6 +1712,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
         for supp_table in INFS_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
@@ -1733,6 +1735,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
         for supp_table in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
+            res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
@@ -1886,6 +1889,7 @@ def channel_suppression(main_request_details, filter_details, source_table, logg
 
     if not status:
         raise Exception(f'Exception occurred while performing channel_suppression. Please look into it. {results}')
+    logger.info(f"Inserting channel suppression stats:  {results}")
     for result in results:
         result['requestId'], result['requestScheduledId'], result['runNumber'] = main_request_details['id'],\
             main_request_details['ScheduleId'], main_request_details['runNumber']
@@ -2349,13 +2353,18 @@ def populate_input_sources_table(main_request_details, main_request_table, logge
     try:
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
+        sf_query = f"update {main_request_table} SET DO_INPUTSOURCE = REPLACE(DO_INPUTSOURCE,' ','')"
+        logger.info(f"Removing spaces in do_inputSource column values. Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
         sf_query = f"select distinct do_inputSource from {main_request_table}"
         logger.info(f"Fetching input source details from request table. Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
         input_sources = sf_cursor.fetchall()
+        input_sources_csv = ''
         for input_source in input_sources:
             mysql_cursor.execute(INSERT_INPUT_SOURCES,(main_request_details['id'],input_source[0]))
         logger.info(f"Successfully populated input source details in {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table.")
+        return input_sources
     except Exception as e:
         logger.error(f"Exception occurred while populating {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while populating {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table. {str(e)} " + str(traceback.format_exc()))
@@ -2363,6 +2372,21 @@ def populate_input_sources_table(main_request_details, main_request_table, logge
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
+
+def populate_file_generation_details(main_request_details, logger, mysql_cursor, input_sources):
+    try:
+        insert_values = (main_request_details['id'], main_request_details['offerSuppressionIds'],
+                         main_request_details['groupingColumns'], ','.join([i[0] for i in input_sources]),
+                         main_request_details['ftpIds'], 'GM_API', 'GM_API')
+        logger.info(f"Auto generate files option is selected, so populating file generation details into "
+                    f"{SUPPRESSION_REQUEST_FILES_INPUT_TABLE} table. Executing query: {INSERT_AUTO_GENERATE_FILE_DETAILS},{insert_values}")
+        mysql_cursor.execute(INSERT_AUTO_GENERATE_FILE_DETAILS,insert_values)
+        logger.info(f"Successfully populated file generation details.")
+    except Exception as e:
+        logger.error(f"Exception occurred while populating {SUPPRESSION_REQUEST_FILES_INPUT_TABLE} table. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(f"Exception occurred while populating {SUPPRESSION_REQUEST_FILES_INPUT_TABLE} table. {str(e)} " + str(traceback.format_exc()))
+
 
 def add_table(main_request_details, filter_details, run_number):
     table_msg = ''
