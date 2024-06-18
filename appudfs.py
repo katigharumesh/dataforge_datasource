@@ -1035,7 +1035,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
                 sf_cursor.execute(tp_sf_query)
         sf_cursor.execute(f"alter table {main_input_source_table} add column do_suppressionStatus varchar default "
                           f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', "
-                          f"do_feedname varchar default 'Third_Party'")
+                          f"do_feedname varchar default 'Third_Party', do_originalInputSource varchar")
         if channel_name == 'INFS':
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.ORANGE_LISTID) "
                               f"FROM (select CLIENT_NAME,cast(ORANGE_LISTID as varchar) as ORANGE_LISTID from "
@@ -1044,6 +1044,9 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) "
                               f"FROM (select CLIENT_NAME,cast(LISTID as varchar) AS LISTID from {FP_LISTIDS_SF_TABLE}) B"
                               f" WHERE A.LIST_ID=B.LISTID")
+        sf_query = f"update {main_input_source_table} set do_originalInputSource=do_inputSource ,do_inputSource = REPLACE(do_inputSource,' ','')"
+        logger.info(f"Removing spaces in do_inputSource column values. Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
         sf_cursor.execute(f"drop table {temp_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
@@ -2325,7 +2328,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
-        stats_pulling_query = f"select count(1) as COUNT,{grouping_columns.replace('do_InputSource','do_InputSource as InputSource').replace('do_MatchSource','do_MatchSource as MatchSource')} from {main_request_table} group by {grouping_columns}"
+        stats_pulling_query = f'''select count(1) as COUNT,{grouping_columns.replace('do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')} from {main_request_table} group by {grouping_columns}'''
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
@@ -2353,9 +2356,6 @@ def populate_input_sources_table(main_request_details, main_request_table, logge
     try:
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        sf_query = f"update {main_request_table} SET DO_INPUTSOURCE = REPLACE(DO_INPUTSOURCE,' ','')"
-        logger.info(f"Removing spaces in do_inputSource column values. Executing query: {sf_query}")
-        sf_cursor.execute(sf_query)
         sf_query = f"select distinct do_inputSource from {main_request_table}"
         logger.info(f"Fetching input source details from request table. Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
@@ -2458,7 +2458,7 @@ def add_table(main_request_details, filter_details, run_number):
                                      f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
                                      f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
                                      f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
-                                     f"WHERE requestid = {main_request_details['id']} AND offerid=0")
+                                     f"WHERE requestid = {main_request_details['id']} AND runNumber = {run_number} AND offerid=0")
                             mysql_cursor.execute(query)
                             table_details = mysql_cursor.fetchall()
 
@@ -2500,7 +2500,7 @@ def add_table(main_request_details, filter_details, run_number):
                              f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
                              f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
                              f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
-                             f"WHERE requestid={main_request_details['id']} AND offerid={offer_id} "
+                             f"WHERE requestid={main_request_details['id']} AND runNumber = {run_number} AND offerid={offer_id} "
                              f"ORDER BY lastupdated;")
                     mysql_cursor.execute(query)
                     table_details = mysql_cursor.fetchall()

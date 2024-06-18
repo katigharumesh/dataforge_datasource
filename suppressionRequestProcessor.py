@@ -224,7 +224,8 @@ class Suppression_Request:
                                                filter_details, main_request_table, current_count, affiliate_channel,
                                                offer_table_prefix) for offer in offers_list]
                     for future in concurrent.futures.as_completed(futures):
-                        main_logger.info("Request offers processing is completed.")
+                        main_logger.info(".. ")
+                    main_logger.info("Request offers processing is completed.")
             else:
                 main_logger.info(f"No offers are configured for suppression.")
 
