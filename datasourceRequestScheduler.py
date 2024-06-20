@@ -3,13 +3,13 @@ from concurrent.futures import ThreadPoolExecutor
 from sqlconfiguration import mysqlconnection
 from serviceconfigurations import *
 import time
-from datetime import datetime
+from datetime import datetime,timezone
 import traceback
 import logging
 from datasourceRequestProcessor import *
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-date= str(datetime.now().date())
+date= str(datetime.now(timezone.utc).date())
 
 class RequestPicker:
     def __init__(self):
@@ -36,7 +36,7 @@ class RequestPicker:
         logger.info(f"Request Process Started .. {datetime.now()}")
         updateflag=None
         id = request[0]
-        startDate=str(request[4])
+        startDate=str(request[8])
         try:
             with mysqlconnection() as mysqlcon:
                 if startDate<=date:

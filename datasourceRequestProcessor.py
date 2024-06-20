@@ -83,9 +83,9 @@ class Dataset:
                 #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger)
-                send_mail("DATASET", request_id,run_number, ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['name']),str(request_id)),
+                send_mail("DATASET", request_id,run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name=str(main_request_details['name']),request_id=(request_id)),
                           MAIL_BODY.format(type_of_request="Dataset",request_id= str(request_id),run_number= str(run_number),schedule_time= str(schedule_time),
-                                           status= 'E<br>Error Reason: Due to processing of another instance',table=''))
+                                           status= 'E<br>Error Reason: Due to processing of another instance',table=''),recipient_emails=recipient_mails)
                 return
             Path(pid_file).touch()
             start_time = time.time()
@@ -122,10 +122,10 @@ class Dataset:
                 update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
                 os.remove(pid_file)
                 send_mail("DATASET", request_id, run_number,
-                          ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['name']), str(request_id)),
+                          ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset", request_name=str(main_request_details['name']),request_id= str(request_id)),
                           MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),
                                            run_number=str(run_number), schedule_time=str(schedule_time),
-                                           status=f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.', table=''))
+                                           status=f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.', table=''),recipient_emails=recipient_mails)
                 return
             main_logger.info("All sources are successfully processed.")
             print("All sources are successfully processed.")
@@ -136,16 +136,16 @@ class Dataset:
             end_time = time.time()
             if sendNotificationsFor =="A":
                 send_mail("DATASET", request_id, run_number,
-                      EMAIL_SUBJECT.format("Dataset", str(main_request_details['name']), str(request_id)),
-                      MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status='C',table=''))
+                      EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']),request_id= str(request_id)),
+                      MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status='C',table=''),recipient_emails=recipient_mails)
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
             send_mail("DATASET", request_id, run_number,
-                      ERROR_EMAIL_SUBJECT.format("Dataset", str(main_request_details['name']), str(request_id)),
+                      ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
                       MAIL_BODY.format("Dataset", str(request_id), str(run_number), str(schedule_time),
-                                       'E\nError Reason: Due to processing of another instance'))
+                                       'E\nError Reason: Due to processing of another instance'),recipient_emails=recipient_mails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
