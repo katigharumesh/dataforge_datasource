@@ -293,6 +293,9 @@ def requires_conversion(filename):
                     return True
     return False
 
+def is_valid_filename(filename):
+    pattern = r'^[a-zA-Z0-9._ -]+$'
+    return bool(re.match(pattern, filename))
 
 def validate_header(file, header, delimiter):
     if file.endswith('gz'):
@@ -478,8 +481,9 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     error_desc = file_details_dict['error_msg']
                     mysql_cursor.execute(insert_file_details, (schedule_id, run_number, mapping_id, count, fileName, 'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
-                    if file_status == 'E':
-                        raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                    if len(files_list) == 1:
+                        if file_status == 'E':
+                            raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
                 raise Exception("There are no files specified.. Kindly check the request..")
@@ -514,9 +518,6 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     schedule_id, run_number, mapping_id, count, fileName,
                     'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time,file_status , error_desc))
                 file_details_list.append(file_details_dict)
-                if file_status == 'E':
-                    raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
-
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
             raise Exception("Wrong Input...raising Exception..")
@@ -546,10 +547,16 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             consumer_logger.info("The given file is not in required extension. ")
             file_details_dict['filename'] = file
             file_details_dict['status'] = 'E'
-            file_details_dict['error_msg'] = 'The given file is not in required extension.'
+            file_details_dict['error_msg'] = f'The given file {file} is not in required extension.'
             file_details_dict["count"] = '0'
             file_details_dict["size"] = 'NA'
-            last_modified_time = file_details_dict["last_modified_time"] = 'NA'
+            file_details_dict["last_modified_time"] = 'NA'
+            return file_details_dict
+        if not is_valid_filename(temp_files_path + file):
+            file_details_dict["count"] = 0
+            file_details_dict['status'] = 'E'
+            file_details_dict['error_msg'] = 'The file_name is not in the required format. Skipping the file.'
+            consumer_logger.info('The file_name is not in the required format. Skipping the file.')
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
@@ -566,7 +573,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
                     return file_details_dict
         if source_sub_type != 'A':
             source_obj.download_file(fully_qualified_file, temp_files_path + file)
-            if file.split(".")[-1] =="gz":
+            if file.split(".")[-1] == "gz":
                 if input_data_dict['isHeaderExists']:
                     line_count = sum(1 for _ in gzip.open(temp_files_path + file, 'rb')) - 1
                 else:

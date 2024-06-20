@@ -23,6 +23,7 @@ import urllib
 import queue
 from queue import Queue
 import logging
+import re
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import smtplib

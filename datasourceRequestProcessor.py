@@ -117,7 +117,7 @@ class Dataset:
                                  f"sources. Considering the datasource preparation request as failed.")
                 print(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources."
                       f" Considering the datasource preparation request as failed.")
-                mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
+                #mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.', request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
                 os.remove(pid_file)
