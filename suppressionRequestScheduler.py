@@ -41,7 +41,7 @@ class RequestPicker:
         logger.info(f"Request Processing Started .. {datetime.now()}")
         updateflag = None
         id = request[0]
-        startDate = str(request[8])
+        startDate = str(request[7])
         mysqlcon = self.create_connection()
         try:
             if startDate <= date:
