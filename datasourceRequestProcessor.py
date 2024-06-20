@@ -90,7 +90,6 @@ class Dataset:
             Path(pid_file).touch()
             start_time = time.time()
             main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
-            delete_old_files(LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
             sources_queue = queue.Queue()
             queue_empty_condition = threading.Condition()
             # Preparing individuals tables for given data sources

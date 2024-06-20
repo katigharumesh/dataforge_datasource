@@ -94,7 +94,6 @@ class Suppression_Request:
             Path(pid_file).touch()
             start_time = time.time()
             main_logger.info("Script Execution Started " + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
-            delete_old_files(SUPP_LOG_PATH, main_logger, LOG_FILES_REMOVE_LIMIT)
 
             sources_queue = queue.Queue()
             queue_empty_condition = threading.Condition()
@@ -121,7 +120,7 @@ class Suppression_Request:
             if len(self.sources_loaded) != self.input_sources_count:
                 main_logger.info(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} ")
                 mysql_cursor.execute(SUPP_DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
-                mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
+                mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
                                                               , supp_request_id, run_number))
                 update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
                 send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id =str(supp_request_id)),
