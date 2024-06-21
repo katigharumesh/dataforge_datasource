@@ -231,8 +231,15 @@ class Suppression_Request:
             if filter_details['id'] != 0:
                 #data append
                 data_append(filter_details, main_request_table, main_logger)
-
-            main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
+            main_logger.info("Fetching Error desc to find any failed files... ")
+            main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
+            mysql_cursor.execute(SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number)))
+            error_desc_dict = mysql_cursor.fetchone()
+            if len(error_desc_dict['error_msg']) > 0:
+                main_logger.info(f"fetched Error message is :: {error_desc_dict['error_msg']}")
+                mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('P',current_count, '', supp_request_id, run_number))
+            else:
+                main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
             if sendNotificationsFor == "A":

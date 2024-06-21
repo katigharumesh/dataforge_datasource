@@ -135,7 +135,7 @@ FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where DO_INPUTSOURCE in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
-LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status='C'"
+LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status in ('C','P')"
 
 '''' SUPPRESSION REQUEST CONFIGS '''
 
@@ -162,7 +162,7 @@ SUPPRESSION_REQUEST_FILES_INPUT_TABLE = "SUPPRESSION_REQUEST_FILES_INPUT"
 
 SUPP_FILE_DETAILS_TABLE = 'SUPPRESSION_REQUEST_FILE_DETAILS'
 
-SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SUPP_SCHEDULE_STATUS_TABLE} where requestId=%s and status='C'"
+SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SUPP_SCHEDULE_STATUS_TABLE} where requestId=%s and status in ('C','P')"
 
 SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestMappingId=%s and runNumber=%s and file_status='C' "
 
@@ -187,9 +187,9 @@ FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
                             'b.sfAccount,b.sfDatabase,' \
-                            'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType from ' \
+                            'b.sfSchema,b.sfTable,b.sfQuery,b.sourceType,b.sourceSubType, a.indexNumber from ' \
                             f'{SUPP_MAPPING_TABLE} a left join ' \
-                            f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s and a.isDeleted=0'
+                            f'{SOURCE_TYPES_TABLE} b on a.sourceId=b.id where a.requestId=%s and a.isDeleted=0 order by a.indexNumber'
 
 SUPP_DATASET_MAX_RUN_NUMBER_QUERY = f" SELECT runNumber, status from {SCHEDULE_STATUS_TABLE} WHERE dataSourceId = %s AND status not in ('W','I') order by runNumber desc limit 1"
 #SUPP_DATAMATCH_DETAILS_QUERY = f"SELECT filterId, isCustomFilter from {SUPP_REQUEST_TABLE} where id= %s"
@@ -332,3 +332,8 @@ INSERT_INTO_STATS_TABLE_QUERY = f"insert into {SUPPRESSION_REQUEST_DATA_STATS_TA
 INSERT_AUTO_GENERATE_FILE_DETAILS = f"insert into {SUPPRESSION_REQUEST_FILES_INPUT_TABLE} (requestId, offerIds, " \
                                     f"groupingColumns, inputDataSources, ftpIds, createdDate, createdBy, updatedBy) " \
                                     f"values(%s, %s, %s, %s, %s, UTC_TIMESTAMP(), %s, %s)"
+
+
+
+FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {FILE_DETAILS_TABLE} where dataSourceScheduleId = %s and runNumber = %s"
+SUPP_FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {SUPP_FILE_DETAILS_TABLE} where requestScheduleId = %s and runNumber = %s "

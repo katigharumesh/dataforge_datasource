@@ -8,11 +8,13 @@ def load_input_source(type_of_request, source, main_request_details):
             log_path = SUPP_LOG_PATH
             file_path = SUPP_FILE_PATH
             source_table_prefix = SUPP_SOURCE_TABLE_PREFIX
+            index_number = source['indexNumber']
         elif type_of_request == "SUPPRESSION_DATASET":
             request_id = source['dataSourceId']
             log_path = LOG_PATH
             file_path = FILE_PATH
             source_table_prefix = SOURCE_TABLE_PREFIX
+            index_number = source['id']
         mapping_id = source['id']
         data_source_id = source['dataSourceId']
         source_id = source['sourceId']
@@ -54,7 +56,7 @@ def load_input_source(type_of_request, source, main_request_details):
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             port, username, password)
-            return tuple([source_table, mapping_id])
+            return tuple([source_table, index_number])
 
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
@@ -120,7 +122,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
                     'DATA OPS SERVICE', 'DATA OPS SERVICE', 'NA', 'NA','C',''))
-                return tuple([source_table, mapping_id])
+                return tuple([source_table, index_number])
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
                 raise Exception("Unknown source_sub_type selected")
@@ -186,7 +188,15 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         logger.info(f"Final table : {main_datasource_table} Count : {record_count}")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
-        mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('C', record_count, '', data_source_id, run_number))
+        logger.info("Fetching Error desc to find any failed files... ")
+        logger.info(f"Executing query: {FETCH_ERROR_MSG, (str(schedule_id), str(run_number))}")
+        mysql_cursor.execute(FETCH_ERROR_MSG, (str(schedule_id), str(run_number)))
+        error_desc_dict = mysql_cursor.fetchone()
+        if len(error_desc_dict['error_msg']) > 0:
+            logger.info(f"fetched Error message is :: {error_desc_dict['error_msg']}")
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('P', record_count, '', data_source_id, run_number))
+        else:
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('C', record_count, '', data_source_id, run_number))
     except Exception as e:
         logger.error(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} "+ str(traceback.format_exc()))
@@ -552,11 +562,14 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             file_details_dict["size"] = 'NA'
             file_details_dict["last_modified_time"] = 'NA'
             return file_details_dict
-        if not is_valid_filename(temp_files_path + file):
+        if not is_valid_filename(file):
+            file_details_dict['filename'] = file
             file_details_dict["count"] = 0
+            file_details_dict["size"] = 'NA'
             file_details_dict['status'] = 'E'
-            file_details_dict['error_msg'] = 'The file_name is not in the required format. Skipping the file.'
-            consumer_logger.info('The file_name is not in the required format. Skipping the file.')
+            file_details_dict["last_modified_time"] = 'NA'
+            file_details_dict['error_msg'] = f'The file_name {file} is not in the required format. Skipping the file.'
+            consumer_logger.info(f'The file_name  {file} is not in the required format. Skipping the file.')
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
@@ -939,7 +952,7 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         max_runNumber = result['runNumber']
         status = result['status']
 
-        if status == "C":
+        if status == "C" or status =="P":
             table_name = f"{MAIN_DATASET_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
             return table_name
         else:
