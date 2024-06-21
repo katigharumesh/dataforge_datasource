@@ -2082,7 +2082,7 @@ class FeedLevelSuppression():
 
             if f"{i}" in supCode.keys():
                 if supCode[i] == 'CUNSUB':
-                    cunsubCode = f"{cunsubCode},'CLEAN'"
+                    cunsubCode = f"{cunsubCode},'A'"
                     cjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
                                f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0)'
                     wccond = ' and cunsub.email is not null '
@@ -2090,7 +2090,7 @@ class FeedLevelSuppression():
                     runQue = True
 
                 if supCode[i] == 'CABUSE':
-                    cabuseCode = f"{cabuseCode},'CLEAN'"
+                    cabuseCode = f"{cabuseCode},'A'"
                     cjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF cunsub on lower(a.EMAIL_ID)= lower(cunsub.email)' \
                                f' and ( cunsub.channelid={liveFeed.channelId} or cunsub.channelid = 0 ) '
                     wccond = ' and cunsub.email is not null '
@@ -2098,21 +2098,21 @@ class FeedLevelSuppression():
                     runQue = True
 
                 if supCode[i] == 'FUNSUB':
-                    funsubCode = f"{funsubCode},'CLEAN'"
+                    funsubCode = f"{funsubCode},'A'"
                     fjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF funsub on lower(a.EMAIL_ID)= lower(funsub.email)' \
                                f' and funsub.channelid={liveFeed.channelId}  and a.LIST_ID=funsub.listid '
                     wfcond = ' and funsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'ZABUSE':
-                    zunsubCode = f"{zunsubCode},'CLEAN'"
+                    zunsubCode = f"{zunsubCode},'A'"
                     zjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF zunsub on lower(a.EMAIL_ID)= lower(zunsub.email)' \
                                f' and zunsub.channelid={liveFeed.channelId} and a.LIST_ID=zunsub.listid and zunsub.source=\'zh\''
                     zhcond = ' and zunsub.email is not null '
                     runQue = True
 
                 if supCode[i] == 'DUNSUB':
-                    dpunsubCode = f"{dpunsubCode},'CLEAN'"
+                    dpunsubCode = f"{dpunsubCode},'A'"
                     dpjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF dpunsub on lower(a.EMAIL_ID)= lower(dpunsub.email)' \
                                 f'  and dpunsub.datapartnerid={liveFeed.dataPartnerId} '
                     dpcond = ' and dpunsub.email is not null '
