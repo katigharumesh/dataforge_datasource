@@ -1311,6 +1311,10 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
             update_default_values(type_of_request, main_request_table, main_logger)
         return current_count
     else:
+        if 'FileSource' in match_or_filter_source_details.keys():
+            file_source_filter_list = list(match_or_filter_source_details['FileSource'])
+            match_or_filter_sources = load_match_or_filter_file_source(type_of_request,file_source_filter_list,main_request_details,main_logger)
+
         if 'DataSource' in match_or_filter_source_details.keys():
             data_source_filter_list = list(match_or_filter_source_details['DataSource'])
             for i in data_source_filter_list:
@@ -1841,7 +1845,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         value_to_set = "INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE_ACCOUNT"
         res['filterName'] = value_to_set
         res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
         logger.info(f" Executing query : {sf_update_temp_table_query}")
         sf_cursor.execute(sf_update_temp_table_query)
         res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
@@ -1853,7 +1857,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         value_to_set = "INFS_LPT.infs_account_level_static_suppression_data_ACCOUNT"
         res['filterName'] = value_to_set
         res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS_LPT.infs_account_level_static_suppression_data' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
         logger.info(f" Executing query : {sf_update_temp_table_query}")
         sf_cursor.execute(sf_update_temp_table_query)
         res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
@@ -1865,7 +1869,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         value_to_set = "INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_ACCOUNT"
         res['filterName'] = value_to_set
         res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION' from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
         logger.info(f" Executing query : {sf_update_temp_table_query}")
         sf_cursor.execute(sf_update_temp_table_query)
         res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
@@ -2538,3 +2542,36 @@ def add_table(main_request_details, filter_details, run_number):
 
 
 
+def load_match_or_filter_file_source(type_of_request,file_source_filter_list,main_request_details,logger):
+    logger.info("load_match_or_filter_file_source method invoked....")
+    result = []
+    for i in range(len(file_source_filter_list)):
+        file_source_index = i
+        file_source = file_source_filter_list[i]
+        file_source_type_id = file_source['sourceId']
+        os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
+        os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
+        temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
+        source_table = f"DO_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
+        consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
+        logger.info(f"Acquiring mysql connection...")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        logger.info(f"Fetch source_type for the request id: {file_source_type_id}")
+        logger.info(f"Executing query: {FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,)}")
+        mysql_cursor.execute(FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,))
+        file_source_details = mysql_cursor.fetchone()
+        hostname = file_source_details['hostname']
+        port = file_source_details['port']
+        username = file_source_details['username']
+        password = file_source_details['password']
+        source_type = file_source_details['sourceType']
+        source_sub_type = file_source_details['sourceSubType']
+        input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'],
+                           'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
+        request_id = main_request_details['id']
+        run_number = main_request_details['runNumber']
+        schedule_id = main_request_details['ScheduleId']
+        source_table = process_file_type_request("",request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
+        result.append(tuple([source_table, file_source['columns'], 'FileSource']))
+    return result
