@@ -1,4 +1,3 @@
-import queue
 from serviceconfigurations import *
 from basicudfs import *
 from appudfs import *
@@ -194,7 +193,7 @@ class Suppression_Request:
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
 
-            #populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
             input_sources = populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
 
@@ -235,8 +234,13 @@ class Suppression_Request:
             main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
             mysql_cursor.execute(SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number)))
             error_desc_dict = mysql_cursor.fetchone()
-            if len(error_desc_dict['error_msg']) > 0:
-                main_logger.info(f"fetched Error message is :: {error_desc_dict['error_msg']}")
+            main_logger.info("Fetching failed offer details, if any... ")
+            main_logger.info(f"Executing query: {FETCH_FAILED_OFFERS, (main_request_details['id'], run_number)}")
+            mysql_cursor.execute(FETCH_FAILED_OFFERS, (main_request_details['id'], run_number))
+            failed_offer_dict = mysql_cursor.fetchone()
+            if error_desc_dict is not None and failed_offer_dict is not None:
+                main_logger.info(f"Fetched Error message is :: {error_desc_dict['error_msg']}")
+                main_logger.info(f"Fetched failed offer details :: {failed_offer_dict['failed_offers']}")
                 mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('P',current_count, '', supp_request_id, run_number))
             else:
                 main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")

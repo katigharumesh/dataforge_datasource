@@ -335,5 +335,7 @@ INSERT_AUTO_GENERATE_FILE_DETAILS = f"insert into {SUPPRESSION_REQUEST_FILES_INP
 
 
 
-FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {FILE_DETAILS_TABLE} where dataSourceScheduleId = %s and runNumber = %s"
-SUPP_FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {SUPP_FILE_DETAILS_TABLE} where requestScheduleId = %s and runNumber = %s "
+FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {FILE_DETAILS_TABLE} where dataSourceScheduleId = %s and runNumber = %s and error_desc!=''"
+SUPP_FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestScheduleId = %s and runNumber = %s and error_desc!=''"
+
+FETCH_FAILED_OFFERS = f"select group_concat(offerId) as failed_offers from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestid = %s and runNumber = %s and status='F'"
