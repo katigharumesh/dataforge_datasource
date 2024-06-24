@@ -980,7 +980,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         for source in sources_loaded:
             input_source_mapping_table_name = source[0]
             input_source_mapping_id = source[1]
-            if SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
+            if SUPP_SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
                 generalized_sources.append(
                     f"(select {main_request_details['FilterMatchFields']},do_inputSource,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
             else:
@@ -1226,6 +1226,8 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
             insert_count = filter_source['INSERT_COUNT']
             sf_update_table_query = f"UPDATE {main_request_table} a set a.{column_to_update} = '{filter_name}'" \
                                     f" from {source_table} b where a.EMAIL_MD5=b.md5hash AND a.{column_to_update} = '{default_value}' "
+            if type_of_request == "Match":
+                sf_update_table_query += " AND a.do_suppressionStatus = 'CLEAN' "
             main_logger.info(f"Executing query: {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
             if type_of_request == "Match":
