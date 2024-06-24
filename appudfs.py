@@ -2577,3 +2577,4 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         source_table = process_file_type_request("",request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
         result.append(tuple([source_table, file_source['columns'], 'FileSource']))
     return result
+
