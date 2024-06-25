@@ -240,13 +240,13 @@ FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password
 # SUPPRESSIONS tables
 
 GREEN_GLOBAL_SUPP_TABLES = (
-                            "GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
-                            "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
-                            "GREEN_LPT.PFM_UNIVERSE_UNSUBS",
-                            "GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE",
-                            "GREEN_LPT.GREEN_UNSUBS",
-                            "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-                            "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+                            "LIST_PROCESSING_UAT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
+                            "LIST_PROCESSING_UAT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
+                            "LIST_PROCESSING_UAT.PFM_UNIVERSE_UNSUBS",
+                            "LIST_PROCESSING_UAT.APT_CUSTDOD_NONUS_DATA_PROFILE",
+                            "LIST_PROCESSING_UAT.GREEN_UNSUBS",
+                            "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+                            "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
                             )
 GREEN_FEED_LEVEL_SUPP_TABLES = {
     'email': (

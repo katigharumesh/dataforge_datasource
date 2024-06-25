@@ -2369,8 +2369,8 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         if len(stats) > STATS_LIMIT:
-            logger.info(f"Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT':-1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}))}")
-            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'})))
+            logger.info(f'''Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({"COUNT":-1 ,"status":f"{STATS_LIMIT} no. of records limit reached."}))}''')
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({"COUNT": -1 ,"status":f"{STATS_LIMIT} no. of records limit reached."})))
         else:
             stats = str(stats).replace("'",'"')
             logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
