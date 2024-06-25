@@ -167,14 +167,14 @@ class Suppression_Request:
 
             if filter_details['id'] != 0:
                 # Data Match Selection
-                current_count = perform_match_or_filter_selection("MATCH",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+                current_count = perform_match_or_filter_selection("Match",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Validate Remaining Data (Non-matched)
                 if filter_details['outputRemainingData']:
                     current_count = validate_remaining_data(main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Data filter Selection
-                current_count = perform_match_or_filter_selection("FILTER",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+                current_count = perform_match_or_filter_selection("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Performing channel suppression
                 current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger,

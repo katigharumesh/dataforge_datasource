@@ -42,7 +42,7 @@ def load_input_source(type_of_request, source, main_request_details):
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
         if source_id == 0 and data_source_id is not None:
-            return tuple([data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger), mapping_id])
+            return tuple([data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger), index_number, mapping_id])
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -56,7 +56,7 @@ def load_input_source(type_of_request, source, main_request_details):
                                                             schedule_id, source_sub_type, input_data_dict,
                                                             mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
                                                             port, username, password)
-            return tuple([source_table, index_number])
+            return tuple([source_table, index_number, mapping_id])
 
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
@@ -122,7 +122,7 @@ def load_input_source(type_of_request, source, main_request_details):
                 mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, records_count, sf_source_name,
                     'DATA OPS SERVICE', 'DATA OPS SERVICE', 'NA', 'NA','C',''))
-                return tuple([source_table, index_number])
+                return tuple([source_table, index_number , mapping_id])
             else:
                 consumer_logger.info("Unknown source_sub_type selected")
                 raise Exception("Unknown source_sub_type selected")
@@ -489,6 +489,10 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     last_modified_time = file_details_dict["last_modified_time"]
                     file_status = file_details_dict['status']
                     error_desc = file_details_dict['error_msg']
+                    if type_of_request == "Match" or type_of_request == "Suppress":
+                        if file_status == 'E':
+                            raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                        continue
                     mysql_cursor.execute(insert_file_details, (schedule_id, run_number, mapping_id, count, fileName, 'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
                     if len(files_list) == 1:
@@ -524,6 +528,10 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                 last_modified_time = file_details_dict["last_modified_time"]
                 file_status = file_details_dict['status']
                 error_desc = file_details_dict['error_msg']
+                if type_of_request == "Match" or type_of_request == "Suppress":
+                    if file_status == 'E':
+                        raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                    continue
                 mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, count, fileName,
                     'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time,file_status , error_desc))
@@ -979,7 +987,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         generalized_sources = []
         for source in sources_loaded:
             input_source_mapping_table_name = source[0]
-            input_source_mapping_id = source[1]
+            input_source_mapping_id = source[2]
             if SUPP_SOURCE_TABLE_PREFIX not in input_source_mapping_table_name:
                 generalized_sources.append(
                     f"(select {main_request_details['FilterMatchFields']},do_inputSource,'{input_source_mapping_id}' as do_inputSourceMappingId from {input_source_mapping_table_name}) ")
@@ -1030,7 +1038,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             source_join_fields = ''
             filter_name = 'Feed and Across files duplicates suppression'
         for source in sources_loaded:
-            input_source_mapping_id = source[1]
+            input_source_mapping_id = source[2]
             if channel_name == 'INFS':
                 fp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table}" \
                               f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on a.email_id = b.email_id" \
@@ -1244,7 +1252,7 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
             counts_before_filter = counts_after_filter
         if type_of_request == "Match":
             sf_update_table_query = f"UPDATE {main_request_table} set do_suppressionStatus = 'Channel_file_match_filtered'" \
-                                    f" where {column_to_update} = '{default_value}'"
+                                    f" where {column_to_update} = '{default_value}' AND do_suppressionStatus = 'CLEAN' "
             main_logger.info(f"Updating channel level non-matching records as 'Channel_file_match_filtered' in "
                              f"do_suppressionStatus column. Executing query: {sf_update_table_query} ")
             sf_cursor.execute(sf_update_table_query)
@@ -1269,12 +1277,12 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
 
 def update_default_values(type_of_request, main_request_table, logger):
     try:
-        if type_of_request == "SUPPRESS_MATCH":
+        if type_of_request == "Match":
             column_to_update = 'do_matchStatus'
             value_to_set = 'MATCH'
             where_cond_column = 'do_suppressionStatus'
             where_cond_column_value = 'CLEAN'
-        if type_of_request == "SUPPRESS_FILTER":
+        if type_of_request == "Suppress":
             column_to_update = 'do_suppressionStatus'
             value_to_set = 'CLEAN'
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -1297,9 +1305,9 @@ def update_default_values(type_of_request, main_request_table, logger):
 
 def perform_match_or_filter_selection(type_of_request,filter_details, main_request_details,
                                       main_request_table, mysql_cursor, main_logger, current_count):
-    if type_of_request == "SUPPRESS_MATCH":
+    if type_of_request == "Match":
         key_to_fetch = 'matchedDataSources'
-    if type_of_request == "SUPPRESS_FILTER":
+    if type_of_request == "Suppress":
         key_to_fetch = 'filterDataSources'
     if filter_details[key_to_fetch] is not None:
         match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]).strip('"').replace("'", '"'))
@@ -1309,7 +1317,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     if len(match_or_filter_source_details) == 0:
     #if match_or_filter_source_details['DataSource'] == [] and match_or_filter_source_details['ByField'] == []:
         main_logger.info(f"No {type_of_request} sources are chosen.")
-        if type_of_request == "SUPPRESS_MATCH":
+        if type_of_request == "Match":
             update_default_values(type_of_request, main_request_table, main_logger)
         return current_count
     else:
@@ -1339,10 +1347,10 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         logger.info(f"Function perform_filter_or_match invoked for {type_of_request}: Sorted Sources Loaded are: {sorted_filter_sources_loaded} ")
         counts_before_filter = current_count
         is_first_match_filter = True
-        if type_of_request == "SUPPRESS_MATCH":
+        if type_of_request == "Match":
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
-        if type_of_request == "SUPPRESS_FILTER":
+        if type_of_request == "Suppress":
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
         logger.info(f"perform_filter_or_match method for {type_of_request} invoked..")
@@ -1377,19 +1385,19 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM {source_table} b WHERE "
                 sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
             sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
-            if type_of_request == "SUPPRESS_MATCH":
+            if type_of_request == "Match":
                 sf_update_table_query += f" AND a.do_suppressionStatus = 'CLEAN' "
-            if type_of_request == "SUPPRESS_FILTER":
+            if type_of_request == "Suppress":
                 sf_update_table_query += f" AND a.do_suppressionStatus != 'NON_MATCH' "
             logger.info(f"Executing query: {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
-            if type_of_request == "SUPPRESS_MATCH":
+            if type_of_request == "Match":
                 if is_first_match_filter:
                     counts_before_filter = 0
                     is_first_match_filter = False
                 counts_after_filter = counts_before_filter + sf_cursor.rowcount
                 filter_type = 'Match'
-            elif type_of_request == "SUPPRESS_FILTER":
+            elif type_of_request == "Suppress":
                 counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 filter_type = 'Suppression'
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
@@ -2364,6 +2372,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             logger.info(f"Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT':-1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}))}")
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'})))
         else:
+            stats = str(stats).replace("'",'"')
             logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
@@ -2416,6 +2425,7 @@ def populate_file_generation_details(main_request_details, logger, mysql_cursor,
 
 def add_table(main_request_details, filter_details, run_number):
     table_msg = ''
+
     def connect_db(config):
         retries = 5
         while retries > 0:
@@ -2450,55 +2460,39 @@ def add_table(main_request_details, filter_details, run_number):
         finally:
             main_conn.close()
 
-    if filter_details['applyChannelFileMatch'] or filter_details['applyChannelFileSuppression']:
-        offer_conn = connect_db(CHANNEL_OFFER_FILES_DB_CONFIG)
-        try:
-            with offer_conn.cursor(dictionary=True) as offer_mysql_cursor:
-                query = (f"SELECT TABLE_NAME, FILENAME, DOWNLOAD_COUNT, INSERT_COUNT FROM SUPPRESSION_MATCH_FILES "
-                         f"WHERE STATUS='A' AND ID IN "
-                         f"(SELECT FILE_ID FROM OFFER_CHANNEL_SUPPRESSION_MATCH_FILES "
-                         f"WHERE CHANNEL='{main_request_details['channelName']}' AND PROCESS_TYPE='C' AND STATUS='A')")
-                offer_mysql_cursor.execute(query)
-                channel_tables_dict = offer_mysql_cursor.fetchall()
+    main_conn = connect_db(MYSQL_CONFIGS)
+    try:
+        with main_conn.cursor() as mysql_cursor:
+            table_msg += "<br><br>Below are the match/suppression stats for the request.<br>"
+            table_msg += """<table border="1">
+                            <thead>
+                            <tr>
+                            <th>Seq #</th><th>Filter Type</th><th>Filter Name</th>
+                            <th>Associate Offer ID</th><th>Download Count</th>
+                            <th>Insert Count</th><th>Count Before Filter</th>
+                            <th>Count After Filter</th></tr></thead><tbody>"""
 
-                if channel_tables_dict:
-                    main_conn = connect_db(MYSQL_CONFIGS)
-                    try:
-                        with main_conn.cursor() as mysql_cursor:
-                            table_msg += "<br><br>Below are the channel level match/suppression stats for the request.<br>"
-                            table_msg += """<table border="1">
-                                            <thead>
-                                            <tr>
-                                            <th>Seq #</th><th>Filter Type</th><th>Filter Name</th>
-                                            <th>Associate Offer ID</th><th>Download Count</th>
-                                            <th>Insert Count</th><th>Count Before Filter</th>
-                                            <th>Count After Filter</th></tr></thead><tbody>"""
+            mysql_cursor.execute("SET @row_number=0")
+            query = (f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', "
+                     f"CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', "
+                     f"CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', "
+                     f"CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', "
+                     f"CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', "
+                     f"CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', "
+                     f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
+                     f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
+                     f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
+                     f"WHERE requestid = {main_request_details['id']} AND runNumber = {run_number} AND offerid=0")
+            mysql_cursor.execute(query)
+            table_details = mysql_cursor.fetchall()
 
-                            mysql_cursor.execute("SET @row_number=0")
-                            query = (f"SELECT CONCAT('<td>', (@row_number := @row_number + 1), '</td>') AS 'Seq #', "
-                                     f"CONCAT('<td>', FILTERTYPE, '</td>') AS 'Filter Type', "
-                                     f"CONCAT('<td>', FILTERNAME, '</td>') AS 'Filter Name', "
-                                     f"CONCAT('<td>', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', "
-                                     f"CONCAT('<td>', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', "
-                                     f"CONCAT('<td>', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', "
-                                     f"CONCAT('<td>', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', "
-                                     f"CONCAT('<td>', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' "
-                                     f"FROM SUPPRESSION_MATCH_DETAILED_STATS "
-                                     f"WHERE requestid = {main_request_details['id']} AND runNumber = {run_number} AND offerid=0")
-                            mysql_cursor.execute(query)
-                            table_details = mysql_cursor.fetchall()
-
-                            for row in table_details:
-                                table_msg += "<tr>"
-                                table_msg += "".join(row)
-                                table_msg += "</tr>"
-                            table_msg += "</tbody></table>"
-                    finally:
-                        main_conn.close()
-                else:
-                    table_msg += "<br><br>Channel level match/suppression files are not available for the request."
-        finally:
-            offer_conn.close()
+            for row in table_details:
+                table_msg += "<tr>"
+                table_msg += "".join(row)
+                table_msg += "</tr>"
+            table_msg += "</tbody></table>"
+    finally:
+        main_conn.close()
 
     if main_request_details['offerSuppressionIds'] is not None:
         table_msg += "<br><br>Below are the offer wise stats for the request."
@@ -2554,7 +2548,7 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
         os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
         temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
-        source_table = f"DO_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
+        source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
         consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
         logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -2572,9 +2566,9 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'],
                            'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
         request_id = main_request_details['id']
-        run_number = main_request_details['runNumber']
+        #run_number = main_request_details['runNumber']
         schedule_id = main_request_details['ScheduleId']
-        source_table = process_file_type_request("",request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
+        source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
         result.append(tuple([source_table, file_source['columns'], 'FileSource']))
     return result
 
