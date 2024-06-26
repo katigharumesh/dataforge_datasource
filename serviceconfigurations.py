@@ -300,9 +300,10 @@ MAIL_BODY = '''
   <title>Email Template</title>
   <style>
     body {{ font-family: Arial, sans-serif; color: #333; }}
-    table {{ width: 100%; border-collapse: collapse; }}
+    table {{ border: 1px solid; width: 100%; border-collapse: collapse; }}
     th, td {{ border: 1px solid #dddddd; padding: 8px; text-align: left; }}
-    th {{ background-color: #f2f2f2; }}
+    th {{ background-color: #f2f2f2; color: white; }}
+    tr:hover {{background-color: coral;}}
   </style>
 </head>
 <body>
