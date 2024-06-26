@@ -130,13 +130,13 @@ class Dataset:
             print("All sources are successfully processed.")
             # Preparing request level main_datasource
             ordered_sources_loaded = [x[0] for x in sorted(self.sources_loaded, key=lambda x: x[1])]
-            create_main_datasource(ordered_sources_loaded, main_request_details, main_logger)
+            schedule_status_value = create_main_datasource(ordered_sources_loaded, main_request_details, main_logger)
             update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger, 'C')
             end_time = time.time()
             if sendNotificationsFor =="A":
                 send_mail("DATASET", request_id, run_number,
                       EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']),request_id= str(request_id)),
-                      MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status='C',table=''),recipient_emails=recipient_mails)
+                      MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status=schedule_status_value,table=''),recipient_emails=recipient_mails)
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
@@ -144,7 +144,7 @@ class Dataset:
             send_mail("DATASET", request_id, run_number,
                       ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
                       MAIL_BODY.format("Dataset", str(request_id), str(run_number), str(schedule_time),
-                                       'E\nError Reason: Due to processing of another instance'),recipient_emails=recipient_mails)
+                                       f'E <br>Error Reason: {str(e)}'),recipient_emails=recipient_mails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():

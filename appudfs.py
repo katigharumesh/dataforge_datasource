@@ -192,11 +192,14 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         logger.info(f"Executing query: {FETCH_ERROR_MSG, (str(schedule_id), str(run_number))}")
         mysql_cursor.execute(FETCH_ERROR_MSG, (str(schedule_id), str(run_number)))
         error_desc_dict = mysql_cursor.fetchone()
-        if len(error_desc_dict['error_msg']) > 0:
+        if error_desc_dict['error_msg'] is not None:
             logger.info(f"fetched Error message is :: {error_desc_dict['error_msg']}")
-            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('P', record_count, '', data_source_id, run_number))
+            schedule_status_value = 'P'
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, (schedule_status_value, record_count, '', data_source_id, run_number))
         else:
-            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('C', record_count, '', data_source_id, run_number))
+            schedule_status_value = 'C'
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, (schedule_status_value, record_count, '', data_source_id, run_number))
+        return schedule_status_value
     except Exception as e:
         logger.error(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
         raise Exception(f"Exception occurred while creating main_datasource. {str(e)} "+ str(traceback.format_exc()))

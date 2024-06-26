@@ -238,18 +238,20 @@ class Suppression_Request:
             main_logger.info(f"Executing query: {FETCH_FAILED_OFFERS, (main_request_details['id'], run_number)}")
             mysql_cursor.execute(FETCH_FAILED_OFFERS, (main_request_details['id'], run_number))
             failed_offer_dict = mysql_cursor.fetchone()
-            if error_desc_dict is not None and failed_offer_dict is not None:
+            if error_desc_dict['error_msg'] is not None or failed_offer_dict['failed_offers'] is not None:
                 main_logger.info(f"Fetched Error message is :: {error_desc_dict['error_msg']}")
                 main_logger.info(f"Fetched failed offer details :: {failed_offer_dict['failed_offers']}")
-                mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('P',current_count, '', supp_request_id, run_number))
+                schedule_status_value = 'P'
+                mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, (schedule_status_value,current_count, '', supp_request_id, run_number))
             else:
-                main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number)}")
-            mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('C', current_count, '', supp_request_id, run_number))
+                schedule_status_value = 'C'
+                main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, (schedule_status_value, current_count, '', supp_request_id, run_number)}")
+                mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,(schedule_status_value, current_count, '', supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
             if sendNotificationsFor == "A":
                 send_mail("SUPP", supp_request_id, run_number, EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
-                                       status ='C', table= add_table(main_request_details,filter_details,run_number)), recipient_emails=recipient_emails)
+                                       status =schedule_status_value, table= add_table(main_request_details,filter_details,run_number)), recipient_emails=recipient_emails)
             end_time = time.time()
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
