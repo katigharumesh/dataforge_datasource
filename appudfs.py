@@ -1032,7 +1032,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         sf_cursor.execute(f"select LISTAGG(CONCAT('b.',COLUMN_NAME),',') WITHIN GROUP (ORDER BY COLUMN_NAME) from "
                           f"information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         aliased_insert_fields = sf_cursor.fetchone()[0]
-        sf_cursor.execute(f"update {temp_input_source_table} set list_id = '00000'  where list_id is null or "
+        sf_cursor.execute(f"update {temp_input_source_table} set list_id = '000000'  where list_id is null or "
                           f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
             source_join_fields = 'and a.do_inputSource = b.do_inputSource'
@@ -2372,8 +2372,8 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         if len(stats) > STATS_LIMIT:
-            logger.info(f'''Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({"COUNT":-1 ,"status":f"{STATS_LIMIT} no. of records limit reached."}))}''')
-            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str({"COUNT": -1 ,"status":f"{STATS_LIMIT} no. of records limit reached."})))
+            logger.info(f'''Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str([{"COUNT":-1 ,"status":f"{STATS_LIMIT} no. of records limit reached."}]))}''')
+            mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str([{'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}]).replace("'",'"')))
         else:
             stats = str(stats).replace("'",'"')
             logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
