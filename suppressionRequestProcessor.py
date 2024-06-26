@@ -251,7 +251,7 @@ class Suppression_Request:
             if sendNotificationsFor == "A":
                 send_mail("SUPP", supp_request_id, run_number, EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
-                                       status =schedule_status_value, table= add_table(main_request_details,filter_details,run_number)), recipient_emails=recipient_emails)
+                                       status =schedule_status_value, table= add_table(main_request_details,run_number)), recipient_emails=recipient_emails)
             end_time = time.time()
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)

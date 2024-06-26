@@ -232,11 +232,21 @@ class FileTransfer:
             self.connection.login(self.username, self.password)
 
     def list_files(self, remote_directory):
+        result_files =[]
         if isinstance(self.connection, paramiko.Transport):
             sftp = paramiko.SFTPClient.from_transport(self.connection)
-            return sftp.listdir(remote_directory)
+            files_list = sftp.listdir(remote_directory)
+            for file in files_list:
+                file_attr = sftp.stat(remote_directory+file)
+                result_files.append(tuple([file,file_attr.st_mtime]))
         elif isinstance(self.connection, ftplib.FTP):
-            return self.connection.nlst(remote_directory)
+            files_list = self.connection.nlst(remote_directory)
+            for file in files_list:
+                modified_time = self.connection.sendcmd('MDTM ' + remote_directory+file)
+                last_modified= modified_time[-14:] if modified_time.startswith('213') else 'N/A'
+                result_files.append(tuple([file,last_modified]))
+        newfiles_list = [x[0] for x in sorted(result_files, key=lambda x: x[1], reverse=True)]
+        return newfiles_list
 
     def download_file(self, remote_file, local_file):
         if isinstance(self.connection, paramiko.Transport):
@@ -327,7 +337,13 @@ class LocalFileTransfer:
 
     def list_files(self, mount_path):
         try:
-            return os.listdir(mount_path)
+            result_list =[]
+            files = os.listdir(mount_path)
+            for file in files:
+                stats = os.stat(mount_path + file)
+                result_list.append(tuple([file, stats.st_mtime]))
+            newfiles_list = [x[0] for x in sorted(result_list, key=lambda x: x[1], reverse=True)]
+            return newfiles_list
         except FileNotFoundError:
             print(f"Directory '{mount_path}' not found.")
             return []
@@ -365,11 +381,17 @@ class ProcessS3Files:
 
     def list_files(self, file_path):
         try:
+            result_files =[]
             bucket_name = file_path.split('/')[2]
             prefix = '/'.join(file_path.split('/')[3:])
             response = self.s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix, Delimiter='/')
             s3_files = [str(obj['Key']).split('/')[-1] for obj in response.get('Contents', [])]
-            return s3_files
+            for file in s3_files:
+                key = '/'.join(str(file_path + file).split('/')[3:])
+                response = self.s3_client.head_object(Bucket=bucket_name, Key=key)
+                result_files.append(tuple([file, response['LastModified'].isoformat()]))
+            newfiles_list = [x[0] for x in sorted(result_files, key=lambda x: x[1], reverse=True)]
+            return newfiles_list
         except Exception as e:
             print(f"Error occurred while listing files in s3 path: {e}")
             return []
@@ -1418,6 +1440,40 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
             sf_cursor.close()
             sf_conn.close()
 
+def load_match_or_filter_file_source(type_of_request,file_source_filter_list,main_request_details,logger):
+    logger.info("load_match_or_filter_file_source method invoked....")
+    result = []
+    for i in range(len(file_source_filter_list)):
+        file_source_index = i
+        file_source = file_source_filter_list[i]
+        file_source_type_id = file_source['sourceId']
+        os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
+        os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
+        temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
+        source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
+        consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
+        logger.info(f"Acquiring mysql connection...")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        logger.info(f"Fetch source_type for the request id: {file_source_type_id}")
+        logger.info(f"Executing query: {FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,)}")
+        mysql_cursor.execute(FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,))
+        file_source_details = mysql_cursor.fetchone()
+        hostname = file_source_details['hostname']
+        port = file_source_details['port']
+        username = file_source_details['username']
+        password = file_source_details['password']
+        source_type = file_source_details['sourceType']
+        source_sub_type = file_source_details['sourceSubType']
+        input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'],
+                           'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
+        request_id = main_request_details['id']
+        #run_number = main_request_details['runNumber']
+        schedule_id = main_request_details['ScheduleId']
+        source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
+        result.append(tuple([source_table, file_source['columns'], 'FileSource']))
+    return result
+
 def validate_remaining_data(main_request_details, main_request_table, mysql_cursor, logger, current_count):
     try:
         counts_before_filter = current_count
@@ -2426,7 +2482,7 @@ def populate_file_generation_details(main_request_details, logger, mysql_cursor,
         raise Exception(f"Exception occurred while populating {SUPPRESSION_REQUEST_FILES_INPUT_TABLE} table. {str(e)} " + str(traceback.format_exc()))
 
 
-def add_table(main_request_details, filter_details, run_number):
+def add_table(main_request_details, run_number):
     table_msg = ''
 
     def connect_db(config):
@@ -2539,39 +2595,15 @@ def add_table(main_request_details, filter_details, run_number):
     return table_msg
 
 
-
-
-def load_match_or_filter_file_source(type_of_request,file_source_filter_list,main_request_details,logger):
-    logger.info("load_match_or_filter_file_source method invoked....")
-    result = []
-    for i in range(len(file_source_filter_list)):
-        file_source_index = i
-        file_source = file_source_filter_list[i]
-        file_source_type_id = file_source['sourceId']
-        os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
-        os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
-        temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
-        source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
-        consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
-        logger.info(f"Acquiring mysql connection...")
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor(dictionary=True)
-        logger.info(f"Fetch source_type for the request id: {file_source_type_id}")
-        logger.info(f"Executing query: {FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,)}")
-        mysql_cursor.execute(FETCH_FILTER_FILE_SOURCE_INFO, (file_source_type_id,))
-        file_source_details = mysql_cursor.fetchone()
-        hostname = file_source_details['hostname']
-        port = file_source_details['port']
-        username = file_source_details['username']
-        password = file_source_details['password']
-        source_type = file_source_details['sourceType']
-        source_sub_type = file_source_details['sourceSubType']
-        input_data_dict = {'filePath': file_source['filePath'], 'delimiter': file_source['delimiter'],
-                           'headerValue': file_source['headerValue'], 'isHeaderExists': file_source['isHeaderExists']}
-        request_id = main_request_details['id']
-        #run_number = main_request_details['runNumber']
-        schedule_id = main_request_details['ScheduleId']
-        source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
-        result.append(tuple([source_table, file_source['columns'], 'FileSource']))
-    return result
+def add_attachment(main_request_details, run_number):
+    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+    mysql_cursor = mysql_conn.cursor()
+    mysql_cursor.execute(STATS_TABLE_OUTFILE_QUERY,(main_request_details['id'],main_request_details['ScheduleId'],run_number))
+    attachment_results = mysql_cursor.fetchall()
+    attachment_file = SUPP_LOG_PATH+f"/Stats_table_attachment_{main_request_details['id']}_{run_number}.csv"
+    with open(attachment_file,'w') as f:
+        f.write("requestId,requestScheduledId,runNumber,stats")
+        for line in attachment_results:
+            f.write(",".join([ str(i) for i in line]))
+    return attachment_file
 

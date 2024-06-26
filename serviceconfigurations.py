@@ -29,6 +29,8 @@ from dateutil.relativedelta import relativedelta
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 import subprocess
 import paramiko
 import ftplib
@@ -36,6 +38,7 @@ import traceback
 import fileinput
 import gzip
 import boto3
+
 
 ''' DATA SOURCE CONFIGS '''
 
@@ -250,14 +253,14 @@ GREEN_GLOBAL_SUPP_TABLES = (
                             )
 GREEN_FEED_LEVEL_SUPP_TABLES = {
     'email': (
-        "INFS_LPT.GLOBAL_COMPLAINER_EMAILS",
-        "INFS_LPT.ABUSE_DETAILS",
-        "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
-        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-        "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+        "LIST_PROCESSING_UAT.GLOBAL_COMPLAINER_EMAILS",
+        "LIST_PROCESSING_UAT.ABUSE_DETAILS",
+        "LIST_PROCESSING_UAT.PFM_FLUENT_REGISTRATIONS_CANADA",
+        "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+        "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
     ),
     'email_listid': (
-        "select email,listid from GREEN_LPT.UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) ",
+        "select email,listid from LIST_PROCESSING_UAT.UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  LIST_PROCESSING_UAT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) ",
     )
 }
 
@@ -333,6 +336,7 @@ INSERT_AUTO_GENERATE_FILE_DETAILS = f"insert into {SUPPRESSION_REQUEST_FILES_INP
                                     f"groupingColumns, inputDataSources, ftpIds, createdDate, createdBy, updatedBy) " \
                                     f"values(%s, %s, %s, %s, %s, UTC_TIMESTAMP(), %s, %s)"
 
+STATS_TABLE_OUTFILE_QUERY = f"SELECT requestId,requestScheduledId,runNumber,stats FROM {SUPPRESSION_REQUEST_DATA_STATS_TABLE} WHERE  requestId= %s AND requestScheduledId = %s AND runNumber= %s "
 
 
 FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {FILE_DETAILS_TABLE} where dataSourceScheduleId = %s and runNumber = %s and error_desc!=''"

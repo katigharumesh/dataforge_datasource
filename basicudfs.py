@@ -80,23 +80,37 @@ def delete_old_files(directory_path, main_logger, days_threshold=30):
 
 
 
-def send_mail(type_of_request, request_id, run_number, subject, message_body, sender_email=FROM_EMAIL, recipient_emails=RECEPIENT_EMAILS, message_type='html'):
-    # Create a MIME multipart message
-    message = MIMEMultipart('alternative')
-    message['From'] = sender_email
-    message['To'] = ', '.join(recipient_emails)
-    message['Subject'] = subject
-    # Add message body
-    if type_of_request == "DATASET":
-        mail_html_file = MAIL_HTML_FILE
-    else:
-        mail_html_file = SUPP_MAIL_HTML_FILE
-
-    with open(mail_html_file.format(request_id, run_number), "w", encoding='utf-8') as file:
-        file.write(message_body)
-    message.attach(MIMEText(message_body, message_type, 'utf-8'))
-    # Connect to localhost SMTP server
-    with smtplib.SMTP('localhost', 25) as server:
-        server.sendmail(sender_email, recipient_emails, message.as_string())
-
+def send_mail(type_of_request, request_id, run_number, subject, message_body, sender_email=FROM_EMAIL,recipient_emails=RECEPIENT_EMAILS, message_type='html', add_attachment=False, attachment_path=None):
+    try:
+        # Create a MIME multipart message
+        message = MIMEMultipart('alternative')
+        message['From'] = sender_email
+        message['To'] = ', '.join(recipient_emails)
+        message['Subject'] = subject
+        # Add message body
+        if type_of_request == "DATASET":
+            mail_html_file = MAIL_HTML_FILE
+        else:
+            mail_html_file = SUPP_MAIL_HTML_FILE
+        with open(mail_html_file.format(request_id, run_number), "w", encoding='utf-8') as file:
+            file.write(message_body)
+        message.attach(MIMEText(message_body, message_type, 'utf-8'))
+        # Add attachment if required
+        if add_attachment and attachment_path:
+            try:
+                with open(attachment_path, "rb") as attachment:
+                    mime_base = MIMEBase('application', 'octet-stream')
+                    mime_base.set_payload(attachment.read())
+                encoders.encode_base64(mime_base)
+                mime_base.add_header('Content-Disposition', f'attachment; filename={os.path.basename(attachment_path)}')
+                message.attach(mime_base)
+            except Exception as e:
+                print(f"Error attaching file: {e}")
+        # Connect to localhost SMTP server
+        with smtplib.SMTP('localhost', 25) as server:
+            #server.set_debuglevel(1)  # Enable debug output
+            server.sendmail(sender_email, recipient_emails, message.as_string())
+            print("Email sent successfully.")
+    except Exception as e:
+        print(f"Error sending email: {e}")
 
