@@ -1261,11 +1261,16 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
             sf_cursor.close()
             sf_conn.close()
 
-def data_append(filter_details, result_table, logger):
+def data_append(main_request_details , filter_details, result_table, logger):
     if filter_details['appendPostalFields']:
         result_table = append_fields(result_table, POSTAL_TABLE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger)
     if filter_details['appendProfileFields']:
-        result_table = append_fields(result_table, PROFILE_TABLE, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
+        channel_name = main_request_details['channelName']
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor()
+        mysql_cursor.execute(f" SELECT sfQuery FROM {SOURCE_TYPES_TABLE} WHERE name LIKE '%Profile%' and channelName = '{channel_name}'")
+        profile_table = mysql_cursor.fetchone()[0]
+        result_table = append_fields(result_table, profile_table, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
 
 
 def append_fields(result_table, source_table, to_append_columns, match_keys,  logger):
@@ -2682,17 +2687,4 @@ def add_table(main_request_details, run_number):
             main_conn.close()
 
     return table_msg
-
-
-def add_attachment(main_request_details, run_number):
-    mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-    mysql_cursor = mysql_conn.cursor()
-    mysql_cursor.execute(STATS_TABLE_OUTFILE_QUERY,(main_request_details['id'],main_request_details['ScheduleId'],run_number))
-    attachment_results = mysql_cursor.fetchall()
-    attachment_file = SUPP_LOG_PATH+f"/Stats_table_attachment_{main_request_details['id']}_{run_number}.csv"
-    with open(attachment_file,'w') as f:
-        f.write("requestId,requestScheduledId,runNumber,stats")
-        for line in attachment_results:
-            f.write(",".join([ str(i) for i in line]))
-    return attachment_file
 

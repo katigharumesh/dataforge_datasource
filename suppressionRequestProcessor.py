@@ -230,7 +230,7 @@ class Suppression_Request:
 
             if filter_details['id'] != 0:
                 #data append
-                data_append(filter_details, main_request_table, main_logger)
+                data_append(main_request_details,filter_details, main_request_table, main_logger)
             main_logger.info("Fetching Error desc to find any failed files... ")
             main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
             mysql_cursor.execute(SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number)))
