@@ -52,10 +52,10 @@ def load_input_source(type_of_request, source, main_request_details):
         if source_type == "F":
             temp_files_path = f"{file_path}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
             os.makedirs(temp_files_path,exist_ok=True)
-            source_table = process_file_type_request(type_of_request,request_id, source_table, run_number,
-                                                            schedule_id, source_sub_type, input_data_dict,
-                                                            mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname,
-                                                            port, username, password)
+            source_table = process_file_type_request(type_of_request,request_id, source_table, run_number, schedule_id,
+                                                     source_sub_type, input_data_dict, mysql_cursor, consumer_logger,
+                                                     mapping_id, temp_files_path, main_request_details, hostname, port,
+                                                     username, password)
             return tuple([source_table, index_number, mapping_id])
 
         elif source_type == "D":
@@ -433,7 +433,7 @@ class ProcessS3Files:
             print(f"Error occurred during header validation for {file} file. Error: {e}")
             return False
 
-def process_file_type_request(type_of_request,request_id, source_table, run_number,schedule_id, source_sub_type, input_data_dict, mysql_cursor, consumer_logger, mapping_id, temp_files_path, hostname = None, port = None, username = None, password = None):
+def process_file_type_request(type_of_request,request_id, source_table, run_number,schedule_id, source_sub_type, input_data_dict, mysql_cursor, consumer_logger, mapping_id, temp_files_path, main_request_details, hostname = None, port = None, username = None, password = None):
     try:
         if source_sub_type == "S":
             consumer_logger.info("Request initiated to process.. File source: SFTP/FTP ")
@@ -564,6 +564,51 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
             raise Exception("Wrong Input...raising Exception..")
+        if type_of_request == "SUPPRESSION_REQUEST" or type_of_request == "SUPPRESSION_DATASET":
+            consumer_logger.info("Initiating within source, file level prioritization and feed level de-duplication")
+            dedup_source_table = source_table + "_DEDUP"
+            sf_query = f"create or replace transient table {dedup_source_table} like {source_table}"
+            consumer_logger.info(f"Executing query: {sf_query}")
+            sf_cursor.execute(sf_query)
+            sf_cursor.execute(f"select LISTAGG(COLUMN_NAME,',') WITHIN GROUP (ORDER BY COLUMN_NAME) from"
+                              f" information_schema.COLUMNS where table_name='{source_table}'")
+            insert_fields = sf_cursor.fetchone()[0]
+            sf_cursor.execute(f"select LISTAGG(CONCAT('b.',COLUMN_NAME),',') WITHIN GROUP (ORDER BY COLUMN_NAME) from "
+                              f"information_schema.COLUMNS where table_name='{source_table}'")
+            aliased_insert_fields = sf_cursor.fetchone()[0]
+            sf_cursor.execute(f"update {source_table} set list_id = '000000'  where list_id is null or "
+                              f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
+            channel_name = main_request_details['channelName']
+            file_names_list = []
+            for fully_qualified_file in files_list:
+                file_names_list.append(fully_qualified_file.split("/")[-1])
+            if channel_name == 'GREEN':
+                for file_name in file_names_list:
+                    tp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table} " \
+                                  f"where do_inputSource = '{file_name}' and list_id not in (select " \
+                                  f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
+                                  f" when not matched then insert " \
+                                  f"({insert_fields}) values ({aliased_insert_fields}) "
+                    consumer_logger.info(f"Executing: {tp_sf_query}")
+                    sf_cursor.execute(tp_sf_query)
+            for file_name in file_names_list:
+                if channel_name == 'INFS':
+                    fp_listid_table = OTEAM_FP_LISTIDS_SF_TABLE
+                else:
+                    fp_listid_table = FP_LISTIDS_SF_TABLE
+                fp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table}" \
+                              f" where do_inputSource = '{file_name}' and list_id in (select " \
+                              f"cast(listid as varchar) from {fp_listid_table})) b on a.email_id = b.email_id" \
+                              f" and a.list_id = b.list_id when not matched then insert " \
+                              f"({insert_fields}) values ({aliased_insert_fields}) "
+                consumer_logger.info(f"Executing: {fp_sf_query}")
+                sf_cursor.execute(fp_sf_query)
+            sf_query = f"drop table if exists {source_table}"
+            consumer_logger.info(f"Executing query: {sf_query}")
+            sf_cursor.execute(sf_query)
+            sf_query = f"alter table {dedup_source_table} rename to {source_table}"
+            consumer_logger.info(f"Executing query: {sf_query}")
+            sf_cursor.execute(sf_query)
         return table_name
     except Exception as e:
         print(f"Except occurred. Please look into it. {str(e)} {str(traceback.format_exc())}")
@@ -995,7 +1040,7 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         logger.error("Exception occurred. Please look into this .... {str(e)}" + str(traceback.format_exc()))
         raise Exception(str(e) + str(traceback.format_exc()))
 
-def create_main_input_source(sources_loaded, main_request_details, logger):
+def create_main_input_source(sources_loaded, main_request_details, filter_details, logger):
     try:
         request_id = main_request_details['id']
         channel_name = main_request_details['channelName']
@@ -1008,7 +1053,11 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         main_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number)
-        temp_input_source_table = MAIN_INPUT_SOURCE_TABLE_PREFIX + str(request_id) + '_' + str(run_number) + "_TEMP"
+        temp_input_source_table = main_input_source_table + "_TEMP"
+        feed_dedup_temp_table = main_input_source_table + "_FEED_DEDUP_TEMP"
+        feed_prioritize_temp_table = main_input_source_table + "_FEED_PRIORITIZE_TEMP"
+        dedup_temp_table = main_input_source_table + "_DEDUP_TEMP"
+
         generalized_sources = []
         for source in sources_loaded:
             input_source_mapping_table_name = source[0]
@@ -1019,7 +1068,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
             else:
                 generalized_sources.append(input_source_mapping_table_name)
 
-        main_input_source_query = f"create or replace transient table" \
+        main_input_source_query = f"create or replace temporary table" \
                                   f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_input_source_table}" \
                                   f" as select distinct {filter_match_fields} from {f' union select {filter_match_fields} from '.join(generalized_sources)}"
         logger.info(f"Main input source preparation query: {main_input_source_query}")
@@ -1047,7 +1096,7 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
 #Removing duplicates based on feed type
         logger.info(f"Performing deduplication based on feed level and request filter level configured "
                     f"removeDuplicates value: {remove_duplicates}")
-        sf_cursor.execute(f"create or replace transient table {main_input_source_table} like {temp_input_source_table}")
+        sf_cursor.execute(f"create or replace temporary table {feed_dedup_temp_table} like {temp_input_source_table}")
         sf_cursor.execute(f"select LISTAGG(COLUMN_NAME,',') WITHIN GROUP (ORDER BY COLUMN_NAME) from"
                           f" information_schema.COLUMNS where table_name='{temp_input_source_table}'")
         insert_fields = sf_cursor.fetchone()[0]
@@ -1057,42 +1106,83 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         sf_cursor.execute(f"update {temp_input_source_table} set list_id = '000000'  where list_id is null or "
                           f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
-            source_join_fields = 'and a.do_inputSource = b.do_inputSource'
+            source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId'
             filter_name = 'Feed and File level duplicates suppression'
         else:
             source_join_fields = ''
             filter_name = 'Feed and Across files duplicates suppression'
-        for source in sources_loaded:
-            input_source_mapping_id = source[2]
-            if channel_name == 'INFS':
-                fp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table}" \
-                              f" where do_inputSourceMappingId = '{input_source_mapping_id}') b on a.email_id = b.email_id" \
-                              f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
-                              f"({insert_fields}) values ({aliased_insert_fields}) "
-                logger.info(f"Executing: {fp_sf_query}")
-                sf_cursor.execute(fp_sf_query)
-            else:
-                fp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table} " \
-                              f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id in (select " \
-                              f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
-                              f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
-                              f"({insert_fields}) values ({aliased_insert_fields}) "
-                logger.info(f"Executing: {fp_sf_query}")
-                sf_cursor.execute(fp_sf_query)
-                tp_sf_query = f"merge into {main_input_source_table} a using (select * from {temp_input_source_table} " \
+
+        if channel_name == 'GREEN':
+            for source in sources_loaded:
+                input_source_mapping_id = source[2]
+                tp_sf_query = f"merge into {feed_dedup_temp_table} a using (select * from {temp_input_source_table} " \
                               f"where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id not in (select " \
                               f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
                               f" {source_join_fields} when not matched then insert " \
                               f"({insert_fields}) values ({aliased_insert_fields}) "
                 logger.info(f"Executing: {tp_sf_query}")
                 sf_cursor.execute(tp_sf_query)
+        for source in sources_loaded:
+            input_source_mapping_id = source[2]
+            if channel_name == 'INFS':
+                fp_listid_table = OTEAM_FP_LISTIDS_SF_TABLE
+            else:
+                fp_listid_table = FP_LISTIDS_SF_TABLE
+            fp_sf_query = f"merge into {feed_dedup_temp_table} a using (select * from {temp_input_source_table}" \
+                          f" where do_inputSourceMappingId = '{input_source_mapping_id}' and list_id in (select " \
+                          f"cast(listid as varchar) from {fp_listid_table})) b on a.email_id = b.email_id" \
+                          f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
+                          f"({insert_fields}) values ({aliased_insert_fields}) "
+            logger.info(f"Executing: {fp_sf_query}")
+            sf_cursor.execute(fp_sf_query)
+            current_table = feed_dedup_temp_table
+        if channel_name == 'GREEN' and filter_details['suppressionMethod'] != 'N':
+            sf_query = f"create or replace temporary table {feed_prioritize_temp_table} like {temp_input_source_table}"
+            logger.info(f"Executing: {sf_query}")
+            sf_cursor.execute(sf_query)
+            if filter_details['suppressionMethod'] == 'F':
+                sf_query = f"insert into {feed_prioritize_temp_table}({insert_fields}) select {insert_fields} from " \
+                           f"{current_table} where list_id in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})"
+                logger.info(f"Executing: {sf_query}")
+                sf_cursor.execute(sf_query)
+                sf_query = f"merge into {feed_prioritize_temp_table} a using (select * from {current_table} where " \
+                           f"list_id not in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on " \
+                           f"a.email_id = b.email_id when not matched then insert ({insert_fields}) values ({aliased_insert_fields})"
+                logger.info(f"Executing: {sf_query}")
+                sf_cursor.execute(sf_query)
+            elif filter_details['suppressionMethod'] == 'G':
+                sf_query = f"insert into {feed_prioritize_temp_table}({insert_fields}) select {insert_fields} from " \
+                           f"{current_table} where list_id not in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})"
+                logger.info(f"Executing: {sf_query}")
+                sf_cursor.execute(sf_query)
+                sf_query = f"merge into {feed_prioritize_temp_table} a using (select * from {current_table} where " \
+                           f"list_id in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on " \
+                           f"a.email_id = b.email_id when not matched then insert ({insert_fields}) values ({aliased_insert_fields})"
+                logger.info(f"Executing: {sf_query}")
+                sf_cursor.execute(sf_query)
+            else:
+                logger.info(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' . Raising Exception ... ")
+                raise Exception(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' . Raising Exception ... ")
+            current_table = feed_prioritize_temp_table
+        sf_query = f"create or replace transient table {dedup_temp_table} like {temp_input_source_table}"
+        logger.info(f"Executing: {sf_query}")
+        sf_cursor.execute(sf_query)
+        sf_query = f"insert into {dedup_temp_table}({insert_fields}) select {insert_fields} from (select {insert_fields}," \
+                   f"row_number() over (partition by email_id,list_id order by profile_id desc) as row_num from {current_table}) where row_num = 1"
+        logger.info(f"Executing: {sf_query}")
+        sf_cursor.execute(sf_query)
+        sf_cursor.execute(f"drop table if exists {main_input_source_table}")
+        sf_query = f"alter table {dedup_temp_table} rename to {main_input_source_table} "
+        logger.info(f"Executing: {sf_query}")
+        sf_cursor.execute(sf_query)
+
         sf_cursor.execute(f"alter table {main_input_source_table} add column do_suppressionStatus varchar default "
                           f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', "
                           f"do_feedname varchar default 'Third_Party', do_originalInputSource varchar")
         if channel_name == 'INFS':
-            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.ORANGE_LISTID) "
-                              f"FROM (select CLIENT_NAME,cast(ORANGE_LISTID as varchar) as ORANGE_LISTID from "
-                              f"{OTEAM_FP_LISTIDS_SF_TABLE}) B WHERE A.LIST_ID=B.ORANGE_LISTID")
+            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.ACCOUNT_NAME,'_',B.LISTID) "
+                              f"FROM (select ACCOUNT_NAME,cast(LISTID as varchar) as LISTID from "
+                              f"{OTEAM_FP_LISTIDS_SF_TABLE}) B WHERE A.LIST_ID=B.LISTID")
         else:
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) "
                               f"FROM (select CLIENT_NAME,cast(LISTID as varchar) AS LISTID from {FP_LISTIDS_SF_TABLE}) B"
@@ -1100,7 +1190,6 @@ def create_main_input_source(sources_loaded, main_request_details, logger):
         sf_query = f"update {main_input_source_table} set do_originalInputSource=do_inputSource ,do_inputSource = REPLACE(do_inputSource,' ','')"
         logger.info(f"Removing spaces in do_inputSource column values. Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
-        sf_cursor.execute(f"drop table {temp_input_source_table}")
         sf_cursor.execute(f"select count(1) from {main_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
@@ -1470,7 +1559,7 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         request_id = main_request_details['id']
         #run_number = main_request_details['runNumber']
         schedule_id = main_request_details['ScheduleId']
-        source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, hostname,port, username, password)
+        source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, main_request_details, hostname,port, username, password)
         result.append(tuple([source_table, file_source['columns'], 'FileSource']))
     return result
 

@@ -94,6 +94,22 @@ class Suppression_Request:
             start_time = time.time()
             main_logger.info("Script Execution Started " + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
 
+            # Fetching the configured Filters table
+            if main_request_details['isCustomFilter']:
+                filter_table = SUPPRESSION_REQUEST_FILTERS_TABLE
+            else:
+                filter_table = SUPPRESSION_PRESET_FILTERS_TABLE
+
+            # Fetching request filter details
+            main_logger.info(f"Fetching filter details, by executing: {FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId'])}")
+            mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId']))
+            filter_details = mysql_cursor.fetchone()
+
+            main_logger.info(f"Filter details: {str(filter_details)}")
+            if not filter_details['isActive']:
+                raise Exception(f"Selected Filter:: {filter_details['name']} is Inactive Please check.The request is set to Error...")
+
+
             sources_queue = queue.Queue()
             queue_empty_condition = threading.Condition()
             # Preparing individuals tables for given data sources
@@ -133,22 +149,7 @@ class Suppression_Request:
 
             # Preparing request level main input source
             ordered_sources_loaded = [x for x in sorted(self.sources_loaded, key=lambda x: x[1])]
-            current_count, main_request_table = create_main_input_source(ordered_sources_loaded, main_request_details, main_logger)
-
-            # Fetching the configured Filters table
-            if main_request_details['isCustomFilter']:
-                filter_table = SUPPRESSION_REQUEST_FILTERS_TABLE
-            else:
-                filter_table = SUPPRESSION_PRESET_FILTERS_TABLE
-
-            # Fetching request filter details
-            main_logger.info(f"Fetching filter details, by executing: {FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId'])}")
-            mysql_cursor.execute(FETCH_REQUEST_FILTER_DETAILS.format(filter_table,main_request_details['filterId']))
-            filter_details = mysql_cursor.fetchone()
-
-            main_logger.info(f"Filter details: {str(filter_details)}")
-            if not filter_details['isActive']:
-                raise Exception(f"Selected Filter:: {filter_details['name']} is Inactive Please check.The request is set to Error...")
+            current_count, main_request_table = create_main_input_source(ordered_sources_loaded, main_request_details, filter_details, main_logger)
 
             # Performing isps filtration
             if filter_details['id'] != 0:
