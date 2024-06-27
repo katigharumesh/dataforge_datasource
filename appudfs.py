@@ -564,7 +564,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
         else:
             consumer_logger.info("Wrong Input...raising Exception..")
             raise Exception("Wrong Input...raising Exception..")
-        if type_of_request == "SUPPRESSION_REQUEST" or type_of_request == "SUPPRESSION_DATASET":
+        if type_of_request == "SUPPRESSION_REQUEST":
             consumer_logger.info("Initiating within source, file level prioritization and feed level de-duplication")
             dedup_source_table = source_table + "_DEDUP"
             sf_query = f"create or replace transient table {dedup_source_table} like {source_table}"
@@ -579,6 +579,10 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             sf_cursor.execute(f"update {source_table} set list_id = '000000'  where list_id is null or "
                               f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
             channel_name = main_request_details['channelName']
+            if main_request_details['removeDuplicates']:
+                source_join_fields = ''
+            else:
+                source_join_fields = 'and a.do_inputSource = b.do_inputSource'
             file_names_list = []
             for fully_qualified_file in files_list:
                 file_names_list.append(fully_qualified_file.split("/")[-1])
@@ -587,7 +591,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     tp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table} " \
                                   f"where do_inputSource = '{file_name}' and list_id not in (select " \
                                   f"cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on a.email_id = b.email_id" \
-                                  f" when not matched then insert " \
+                                  f" {source_join_fields} when not matched then insert " \
                                   f"({insert_fields}) values ({aliased_insert_fields}) "
                     consumer_logger.info(f"Executing: {tp_sf_query}")
                     sf_cursor.execute(tp_sf_query)
@@ -599,7 +603,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                 fp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table}" \
                               f" where do_inputSource = '{file_name}' and list_id in (select " \
                               f"cast(listid as varchar) from {fp_listid_table})) b on a.email_id = b.email_id" \
-                              f" and a.list_id = b.list_id when not matched then insert " \
+                              f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
                               f"({insert_fields}) values ({aliased_insert_fields}) "
                 consumer_logger.info(f"Executing: {fp_sf_query}")
                 sf_cursor.execute(fp_sf_query)
@@ -1108,10 +1112,11 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         if remove_duplicates == 0:
             source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId'
             filter_name = 'Feed and File level duplicates suppression'
+            dedup_field = ',do_inputSourceMappingId'
         else:
             source_join_fields = ''
             filter_name = 'Feed and Across files duplicates suppression'
-
+            dedup_field = ''
         if channel_name == 'GREEN':
             for source in sources_loaded:
                 input_source_mapping_id = source[2]
@@ -1147,7 +1152,8 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                 sf_cursor.execute(sf_query)
                 sf_query = f"merge into {feed_prioritize_temp_table} a using (select * from {current_table} where " \
                            f"list_id not in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on " \
-                           f"a.email_id = b.email_id when not matched then insert ({insert_fields}) values ({aliased_insert_fields})"
+                           f"a.email_id = b.email_id {source_join_fields} when not matched then insert ({insert_fields})" \
+                           f" values ({aliased_insert_fields})"
                 logger.info(f"Executing: {sf_query}")
                 sf_cursor.execute(sf_query)
             elif filter_details['suppressionMethod'] == 'G':
@@ -1157,7 +1163,8 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                 sf_cursor.execute(sf_query)
                 sf_query = f"merge into {feed_prioritize_temp_table} a using (select * from {current_table} where " \
                            f"list_id in (select cast(listid as varchar) from {FP_LISTIDS_SF_TABLE})) b on " \
-                           f"a.email_id = b.email_id when not matched then insert ({insert_fields}) values ({aliased_insert_fields})"
+                           f"a.email_id = b.email_id {source_join_fields} when not matched then insert ({insert_fields})" \
+                           f" values ({aliased_insert_fields})"
                 logger.info(f"Executing: {sf_query}")
                 sf_cursor.execute(sf_query)
             else:
@@ -1168,7 +1175,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         logger.info(f"Executing: {sf_query}")
         sf_cursor.execute(sf_query)
         sf_query = f"insert into {dedup_temp_table}({insert_fields}) select {insert_fields} from (select {insert_fields}," \
-                   f"row_number() over (partition by email_id,list_id order by profile_id desc) as row_num from {current_table}) where row_num = 1"
+                   f"row_number() over (partition by email_id,list_id{dedup_field} order by profile_id desc) as row_num from {current_table}) where row_num = 1"
         logger.info(f"Executing: {sf_query}")
         sf_cursor.execute(sf_query)
         sf_cursor.execute(f"drop table if exists {main_input_source_table}")
