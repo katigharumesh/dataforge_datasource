@@ -2615,10 +2615,10 @@ def add_table(main_request_details, run_number):
             table_msg += """<table style="border: 1px solid; width: 100%; border-collapse: collapse;">
                             <thead>
                             <tr style="border: 1px solid ;background-color: #296695; color: white; border-color: black;">
-                            <th style="border: 1px solid ; padding: 8px; text-align: left;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Filter Name</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Download Count</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Count Before Filter</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left;">Count After Filter</th></tr></thead><tbody>"""
+                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
+                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
+                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
+                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
 
             mysql_cursor.execute("SET @row_number=0")
             query = (f'''SELECT CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
@@ -2653,10 +2653,10 @@ def add_table(main_request_details, run_number):
                     table_msg += """<table style="border: 1px solid; width: 100%; border-collapse: collapse;">
                                     <thead>
                                     <tr style="border: 1px solid ;background-color: #296695; color: white; border-color: black;">
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Filter Name</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Download Count</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left;">Count Before Filter</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left;">Count After Filter</th></tr></thead><tbody>"""
+                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
+                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
+                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
+                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
 
                     mysql_cursor.execute("SET @row_number=0")
                     query = (f'''SELECT CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
