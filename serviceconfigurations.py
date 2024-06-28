@@ -344,3 +344,5 @@ FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {FILE_DET
 SUPP_FETCH_ERROR_MSG = f" select group_concat(error_desc) as error_msg from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestScheduleId = %s and runNumber = %s and error_desc!=''"
 
 FETCH_FAILED_OFFERS = f"select group_concat(offerId) as failed_offers from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestid = %s and runNumber = %s and status='F'"
+
+FETCH_SUCCESS_OFFERS = f"select group_concat(offerId) as success_offers from {SUPPRESSION_REQUEST_OFFERS_TABLE} where requestid = %s and runNumber = %s and status='S'"

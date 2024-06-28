@@ -2517,12 +2517,14 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
             sf_conn.close()
 
 
-def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor):
+def populate_stats_table(main_request_details, main_request_table, logger, mysql_cursor, run_number):
     try:
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
-        stats_pulling_query = f'''select count(1) as COUNT,{grouping_columns.replace('do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')} from {main_request_table} group by {grouping_columns}'''
+        stats_pulling_query = f'''select 'NA' as "OfferId", count(1) as COUNT,{grouping_columns.replace(
+            'do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')} 
+            from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns}'''
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
@@ -2532,8 +2534,15 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             logger.info(f'''Executing query: { INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str([{"COUNT":-1 ,"status":f"{STATS_LIMIT} no. of records limit reached."}]))}''')
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str([{'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}]).replace("'",'"')))
         else:
+            mysql_cursor.execute(FETCH_SUCCESS_OFFERS,(main_request_details['id'],run_number))
+            offerids_list = str(mysql_cursor.fetchone()['success_offers']).split(',')
+            for offerid in offerids_list:
+                offer_stats_pulling_query = f'''select {offerid} as "OfferId", count(1) as COUNT,{grouping_columns.replace('do_inputsource', 'do_inputsource as "Input Source"').replace('do_matchstatus', 'do_matchstatus as "Matched Source"')} from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns}'''
+                logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
+                sf_cursor.execute(offer_stats_pulling_query)
+                stats += sf_cursor.fetchall()
             stats = str(stats).replace("'",'"')
-            logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
+            #logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
