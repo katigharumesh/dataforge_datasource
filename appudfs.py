@@ -600,9 +600,12 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     fp_listid_table = OTEAM_FP_LISTIDS_SF_TABLE
                 else:
                     fp_listid_table = FP_LISTIDS_SF_TABLE
+                if channel_name == 'GREEN':
+                    fp_listid_validation = 'and list_id in (select cast(listid as varchar) from {fp_listid_table})'
+                else:
+                    fp_listid_validation = ''
                 fp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table}" \
-                              f" where do_inputSource = '{file_name}' and list_id in (select " \
-                              f"cast(listid as varchar) from {fp_listid_table})) b on a.email_id = b.email_id" \
+                              f" where do_inputSource = '{file_name}' {fp_listid_validation}) b on a.email_id = b.email_id" \
                               f" and a.list_id = b.list_id {source_join_fields} when not matched then insert " \
                               f"({insert_fields}) values ({aliased_insert_fields}) "
                 consumer_logger.info(f"Executing: {fp_sf_query}")
@@ -2361,6 +2364,8 @@ class FeedLevelSuppression():
                 self.logger.info(f"QUERY :: {query}")
                 sfcur.execute(query)
                 listids = ','.join([f"{r[0]}" for r in sfcur.fetchall()])
+                if listids == '':
+                    listids = "''"
         except Exception as e:
             self.logger.info(f"ERROR :: in getDistinctListid() {e}")
 
@@ -2522,9 +2527,9 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
-        stats_pulling_query = f'''select 'NA' as "OfferId", count(1) as COUNT,{grouping_columns.replace(
-            'do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')} 
-            from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns}'''
+        stats_pulling_query = f'''select 'NA' as "OfferId",{grouping_columns.replace(
+            'do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')}, count(1) 
+            as COUNT from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns}'''
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
@@ -2535,14 +2540,18 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY,(str(main_request_details['id']),str(main_request_details['ScheduleId']),str(main_request_details['runNumber']),str([{'COUNT': -1 ,'status':f'{STATS_LIMIT} no. of records limit reached.'}]).replace("'",'"')))
         else:
             mysql_cursor.execute(FETCH_SUCCESS_OFFERS,(main_request_details['id'],run_number))
-            offerids_list = str(mysql_cursor.fetchone()['success_offers']).split(',')
-            for offerid in offerids_list:
-                offer_stats_pulling_query = f'''select {offerid} as "OfferId", count(1) as COUNT,{grouping_columns.replace('do_inputsource', 'do_inputsource as "Input Source"').replace('do_matchstatus', 'do_matchstatus as "Matched Source"')} from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns}'''
-                logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
-                sf_cursor.execute(offer_stats_pulling_query)
-                stats += sf_cursor.fetchall()
+            fetched_offers = mysql_cursor.fetchone()
+            if fetched_offers['success_offers'] is not None:
+                offerids_list = str(fetched_offers['success_offers']).split(',')
+                for offerid in offerids_list:
+                    offer_stats_pulling_query = f'''select {offerid} as "OfferId",{grouping_columns.replace(
+                        'do_inputsource', 'do_inputsource as "Input Source"').replace('do_matchstatus', 'do_matchstatus as "Matched Source"')}
+                        , count(1) as COUNT from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and 
+                        do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns}'''
+                    logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
+                    sf_cursor.execute(offer_stats_pulling_query)
+                    stats += sf_cursor.fetchall()
             stats = str(stats).replace("'",'"')
-            #logger.info(f"Executing query: {INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats))}")
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
