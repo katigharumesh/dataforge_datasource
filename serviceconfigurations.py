@@ -301,8 +301,8 @@ MAIL_BODY = '''
   <style>
     body {{ font-family: Arial, sans-serif; color: #333; }}
     table {{ border: 1px solid; width: 100%; border-collapse: collapse; }}
-    th, td {{ border: 1px solid #dddddd; padding: 8px; text-align: left; }}
-    th {{ background-color: #f2f2f2; color: white; }}
+    th, td {{ border: 1px solid ; padding: 8px; text-align: left; }}
+    th {{ background-color: #296695; color: white; border-color: black; }}
     tr:hover {{background-color: coral;}}
   </style>
 </head>

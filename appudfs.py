@@ -2069,7 +2069,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             sf_conn.close()
 
 
-def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor ):
+def channel_suppression(main_request_details, filter_details, source_table, logger, mysql_cursor):
     logger.info("channel_suppression execution started.")
     channel = main_request_details['channelName']
     suppression_method = filter_details['suppressionMethod']
