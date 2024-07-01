@@ -463,11 +463,11 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
         # mysql_cursor.execute(last_successful_run_number_query)
         if type_of_request == "SUPPRESSION_REQUEST":
             last_successful_run_number_query = SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY
-            fetch_last_iteration_file_details_query = FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
+            fetch_last_iteration_file_details_query = SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
             insert_file_details = SUPP_INSERT_FILE_DETAILS
         if type_of_request == "SUPPRESSION_DATASET":
             last_successful_run_number_query = LAST_SUCCESSFUL_RUN_NUMBER_QUERY
-            fetch_last_iteration_file_details_query = SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
+            fetch_last_iteration_file_details_query = FETCH_LAST_ITERATION_FILE_DETAILS_QUERY
             insert_file_details = INSERT_FILE_DETAILS
 
         last_iteration_files_details = []
