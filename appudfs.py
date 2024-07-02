@@ -1743,7 +1743,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
             def conversions_supp(filter_type, associate_offer_id, current_count):
                 counts_before_filter = current_count
                 sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                        f"from (select profileid from {OFFER_SUPP_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                        f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
                                         f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
                                         f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
                                         f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
