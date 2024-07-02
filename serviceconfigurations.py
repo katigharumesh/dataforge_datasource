@@ -244,6 +244,7 @@ FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password
 # SUPPRESSIONS tables
 
 GREEN_GLOBAL_SUPP_TABLES = (
+                            "GREEN_LPT.ORIGIN_UNIVERSE_UNSUBS",
                             "GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
                             "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
                             "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
