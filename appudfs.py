@@ -601,7 +601,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                 else:
                     fp_listid_table = FP_LISTIDS_SF_TABLE
                 if channel_name == 'GREEN':
-                    fp_listid_validation = 'and list_id in (select cast(listid as varchar) from {fp_listid_table})'
+                    fp_listid_validation = f'and list_id in (select cast(listid as varchar) from {fp_listid_table})'
                 else:
                     fp_listid_validation = ''
                 fp_sf_query = f"merge into {dedup_source_table} a using (select * from {source_table}" \
@@ -2642,23 +2642,23 @@ def add_table(main_request_details, run_number):
     try:
         with main_conn.cursor() as mysql_cursor:
             table_msg += "<br><br>Below are the match/suppression stats for the request.<br>"
-            table_msg += """<table style="border: 1px solid; width: 100%; border-collapse: collapse;">
+            table_msg += """<table style="font-family: LatoWeb ;border: 1px solid; width: 100%; border-collapse: collapse;">
                             <thead>
-                            <tr style="border: 1px solid ;background-color: #296695; color: white; border-color: black;">
-                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
-                            <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
+                            <tr style="font-family: LatoWeb ;border: 1px solid ;background-color: #296695; color: white; border-color: black;">
+                            <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
+                            <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
+                            <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
+                            <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
 
             mysql_cursor.execute("SET @row_number=0")
-            query = (f'''SELECT CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FILTERTYPE, '</td>') AS 'Filter Type', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FILTERNAME, '</td>') AS 'Filter Name', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
-                     f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
+            query = (f'''SELECT CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FILTERTYPE, '</td>') AS 'Filter Type', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FILTERNAME, '</td>') AS 'Filter Name', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
+                     f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
                      f'''FROM SUPPRESSION_MATCH_DETAILED_STATS '''
                      f'''WHERE requestid = {main_request_details['id']} AND runNumber = {run_number} AND offerid=0''')
             mysql_cursor.execute(query)
@@ -2680,23 +2680,23 @@ def add_table(main_request_details, run_number):
                 for offer in successful_offers:
                     offer_id = offer['OFFERID']
                     table_msg += f"<br><br><b>OFFER {offer_id} :</b><br><br>"
-                    table_msg += """<table style="border: 1px solid; width: 100%; border-collapse: collapse;">
+                    table_msg += """<table style="font-family: LatoWeb ;border: 1px solid; width: 100%; border-collapse: collapse;">
                                     <thead>
-                                    <tr style="border: 1px solid ;background-color: #296695; color: white; border-color: black;">
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
-                                    <th style="border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
+                                    <tr style="font-family: LatoWeb ;border: 1px solid ;background-color: #296695; color: white; border-color: black;">
+                                    <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Seq #</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Type</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Filter Name</th>
+                                    <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Associate Offer ID</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Download Count</th>
+                                    <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Insert Count</th><th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count Before Filter</th>
+                                    <th style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left; border-color: black;">Count After Filter</th></tr></thead><tbody>"""
 
                     mysql_cursor.execute("SET @row_number=0")
-                    query = (f'''SELECT CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FILTERTYPE, '</td>') AS 'Filter Type', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FILTERNAME, '</td>') AS 'Filter Name', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
-                             f'''CONCAT('<td style="border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
+                    query = (f'''SELECT CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', (@row_number := @row_number + 1), '</td>') AS 'Seq #', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FILTERTYPE, '</td>') AS 'Filter Type', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FILTERNAME, '</td>') AS 'Filter Name', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', ASSOCIATEOFFERID, '</td>') AS 'Associate Offer ID', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(downloadcount, 0), '</td>') AS 'Download Count', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
+                             f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
                              f'''FROM SUPPRESSION_MATCH_DETAILED_STATS '''
                              f'''WHERE requestid={main_request_details['id']} AND runNumber = {run_number} AND offerid={offer_id} '''
                              f'''ORDER BY lastupdated;''')

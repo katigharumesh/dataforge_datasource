@@ -243,24 +243,25 @@ FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password
 # SUPPRESSIONS tables
 
 GREEN_GLOBAL_SUPP_TABLES = (
-                            "LIST_PROCESSING_UAT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
-                            "LIST_PROCESSING_UAT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
-                            "LIST_PROCESSING_UAT.PFM_UNIVERSE_UNSUBS",
-                            "LIST_PROCESSING_UAT.APT_CUSTDOD_NONUS_DATA_PROFILE",
-                            "LIST_PROCESSING_UAT.GREEN_UNSUBS",
-                            "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-                            "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+                            "GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
+                            "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
+                            "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
+                            "GREEN_LPT.PFM_UNIVERSE_UNSUBS",
+                            "GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE",
+                            "GREEN_LPT.GREEN_UNSUBS",
+                            "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+                            "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
                             )
 GREEN_FEED_LEVEL_SUPP_TABLES = {
     'email': (
-        "LIST_PROCESSING_UAT.GLOBAL_COMPLAINER_EMAILS",
-        "LIST_PROCESSING_UAT.ABUSE_DETAILS",
-        "LIST_PROCESSING_UAT.PFM_FLUENT_REGISTRATIONS_CANADA",
-        "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
-        "LIST_PROCESSING_UAT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
+        "INFS_LPT.GLOBAL_COMPLAINER_EMAILS",
+        "INFS_LPT.ABUSE_DETAILS",
+        "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
+        "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE"
     ),
     'email_listid': (
-        "select email,listid from LIST_PROCESSING_UAT.UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  LIST_PROCESSING_UAT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) ",
+        "select email,listid from GREEN_LPT.UNSUB_DETAILS where listid in (select cast(listid as VARCHAR) from  GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3) ) ",
     )
 }
 
@@ -299,11 +300,12 @@ MAIL_BODY = '''
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Email Template</title>
   <style>
-    body {{ font-family: Arial, sans-serif; color: #333; }}
+    body {{ font-family: LatoWeb, sans-serif; color: #212529; }}
+    p {{ font-family: LatoWeb, sans-serif; color: #212529; }}
     table {{ border: 1px solid; width: 100%; border-collapse: collapse; }}
     th, td {{ border: 1px solid ; padding: 8px; text-align: left; }}
     th {{ background-color: #296695; color: white; border-color: black; }}
-    tr:hover {{background-color: coral;}}
+    tr:hover {{background-color: #fde995;}}
   </style>
 </head>
 <body>
@@ -313,11 +315,11 @@ Below are the request details.</p>
 <p>Request Type: {type_of_request}<br>
 Request Id: {request_id}<br>
 Run Number: {run_number}<br>
-Schedule Time: {schedule_time}<br>
+Schedule Time: {schedule_time} UTC <br>
 Status: {status}<br></p>
-<p>{table} </p><!--FOR TABLE INSERTION-->
-<p>Thanks,<br></p>
-<p>System Admin</p>
+<p>{table}</p><!--FOR TABLE INSERTION-->
+<p>Thanks,<br>
+System Admin</p>
 '''
 
 
