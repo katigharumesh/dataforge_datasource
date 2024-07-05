@@ -167,6 +167,16 @@ class Suppression_Request:
                 current_count = channel_adhoc_files_match_and_suppress("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
             if filter_details['id'] != 0:
+                # Jornaya match
+                jornaya_match_details = json.loads(filter_details['matchJornayaData'])
+                if jornaya_match_details['isEnabled']:
+                    current_count = jornaya_and_mockingbird_match('Jornaya', current_count, main_request_table, main_logger, mysql_cursor, main_request_details, jornaya_match_details)
+
+                # Mockingbird match
+                mockingbird_match_details = json.loads(filter_details['matchMockingBirdData'])
+                if mockingbird_match_details['isEnabled']:
+                    current_count = jornaya_and_mockingbird_match('Mockingbird', current_count, main_request_table, main_logger, mysql_cursor, main_request_details, mockingbird_match_details)
+
                 # Data Match Selection
                 current_count = perform_match_or_filter_selection("Match",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
@@ -189,7 +199,8 @@ class Suppression_Request:
                 if filter_details['stateSuppression']:
                     current_count = state_and_zip_suppression('STATE_SUPPRESSION', current_count, main_request_table,
                                                               filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
-
+            else:
+                update_default_values('Match', main_request_table, main_logger)
             # Performing Purdue suppression
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
@@ -230,7 +241,7 @@ class Suppression_Request:
 
             if filter_details['id'] != 0:
                 #data append
-                data_append(main_request_details,filter_details, main_request_table, main_logger)
+                data_append(main_request_details,filter_details, main_request_table, main_logger, mysql_cursor)
             main_logger.info("Fetching Error desc to find any failed files... ")
             main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
             mysql_cursor.execute(SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number)))

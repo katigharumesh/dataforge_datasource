@@ -85,8 +85,6 @@ MYSQL_CONFIGS = {
     'allow_local_infile': True
 }
 
-
-
 SCHEDULE_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE'
 SCHEDULE_STATUS_TABLE = 'SUPPRESSION_DATASOURCE_SCHEDULE_STATUS'
 DATASET_TABLE = 'SUPPRESSION_DATASOURCE'
@@ -176,6 +174,8 @@ SUPP_DELETE_FILE_DETAILS = f'delete from {SUPP_FILE_DETAILS_TABLE} where suppres
 FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.INFS_ORANGE_MAPPING_TABLE"
 
+FETCH_GM_CONFIGURED_ISPS = '''select group_concat(concat("'",ispName,"'")) as isps from ISP_DETAILS where isDeleted=0'''
+
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
@@ -207,8 +207,12 @@ INSERT_SUPPRESSION_MATCH_DETAILED_STATS = f" insert into {SUPPRESSION_MATCH_DETA
 FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressionMethod," \
                                "stateSuppression,zipSuppression,filterDataSources," \
                                "applyOfferFileSuppression,applyChannelFileSuppression,applyOfferFileMatch," \
-                               "applyChannelFileMatch,appendProfileFields,appendPostalFields,profileFields," \
+                               "applyChannelFileMatch,matchMockingBirdData,matchJornayaData,appendProfileFields," \
+                               "appendPostalFields,profileFields," \
                                "postalFields,isActive,outputRemainingData from {} where id = {}"
+
+JORNAYA_TABLE = 'LIST_PROCESSING_UAT.JORNAYA_DATA'
+MOCKINGBIRD_TABLE = 'LIST_PROCESSING_UAT.MOCKINGBIRD_DATA'
 
 INSERT_INPUT_SOURCES = f"insert into {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE}(requestId,inputSource) values (%s,%s)"
 
@@ -235,7 +239,9 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
 FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper(%s) "
 
 POSTAL_TABLE = "INFS_LPT_QA.POSTAL_DATA"
-PROFILE_TABLE = ""
+
+APPEND_POSTAL_FIELDS_SOURCE = f"SELECT sfDatabase,sfSchema,sfTable,sfQuery FROM {SOURCE_TYPES_TABLE} WHERE sourceType = 'A' and sourceSubType = 'A' and channelName = %s"
+APPEND_PROFILE_FIELDS_SOURCE = f"SELECT sfDatabase,sfSchema,sfTable,sfQuery FROM {SOURCE_TYPES_TABLE} WHERE sourceType = 'A' and sourceSubType = 'P' and channelName = %s"
 POSTAL_MATCH_FIELDS = "MD5HASH"
 PROFILE_MATCH_FIELDS = "EMAIL_ID"
 

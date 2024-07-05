@@ -99,16 +99,17 @@ def load_input_source(type_of_request, source, main_request_details):
                         where_conditions.append(f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
-                                                 f"as select {main_request_details['FilterMatchFields']} " \
+                                                 f"as select distinct {main_request_details['FilterMatchFields']} " \
                                                  f"from {sf_data_source} where {' and '.join(where_conditions)} "
                 consumer_logger.info("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
                 if touch_filter:
-                    sf_cursor.execute(
-                        f"delete from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} a "
-                        f"using (select {grouping_fields} from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}"
-                        f" group by {grouping_fields} having count(1)< {touch_count}) b "
-                        f"where {join_fields}")
+                    touch_filter_query = f"delete from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} a " \
+                                         f"using (select {grouping_fields} from" \
+                                         f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
+                                         f"group by {grouping_fields} having count(1)< {touch_count}) b where {join_fields}"
+                    consumer_logger.info(f"Applying touch filter, executing query: {touch_filter_query}")
+                    sf_cursor.execute(touch_filter_query)
                 sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}" \
                                   f" add column do_inputSource varchar default '{sf_source_name}', do_inputSourceMappingId varchar default '{mapping_id}'")
                 sf_cursor.execute(
@@ -1080,20 +1081,21 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                                   f" as select distinct {filter_match_fields} from {f' union select {filter_match_fields} from '.join(generalized_sources)}"
         logger.info(f"Main input source preparation query: {main_input_source_query}")
         sf_cursor.execute(main_input_source_query)
-        if 'email_id' in str(filter_match_fields).lower().split(','):
-            sf_cursor.execute(f"update {temp_input_source_table} set email_id=lower(trim(email_id))")
-            if 'email_md5' not in str(filter_match_fields).lower().split(','):
-                sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar")
-                sf_cursor.execute(f"update {temp_input_source_table} set email_md5 = md5(email_id)")
-        if 'isp' in str(filter_match_fields).lower().split(','):
-            sf_cursor.execute(f"update {temp_input_source_table} set isp=split_part(email_id,'@',-1)")
-        else:
-            sf_cursor.execute(f"alter table {temp_input_source_table} add column isp varchar")
-            sf_cursor.execute(f"update {temp_input_source_table} set isp=split_part(email_id,'@',-1)")
-        sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
-        counts_after_filter = sf_cursor.fetchone()[0]
+        sf_cursor.execute(f"update {temp_input_source_table} set email_id=lower(trim(email_id))")
+        if 'email_md5' not in str(filter_match_fields).lower().split(','):
+            sf_cursor.execute(f"alter table {temp_input_source_table} add column email_md5 varchar")
+            sf_cursor.execute(f"update {temp_input_source_table} set email_md5 = md5(email_id)")
+
+        sf_cursor.execute(f"alter table {temp_input_source_table} add column if not exists isp varchar")
+        sf_cursor.execute(f"update {temp_input_source_table} set isp=split_part(email_id,'@',-1)")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
+        mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
+        gm_configured_isps = mysql_cursor.fetchone()['isps']
+        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'other' where isp not in ({gm_configured_isps})")
+
+        sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
+        counts_after_filter = sf_cursor.fetchone()[0]
         logger.info(f"Deleting old detailed stats, if existent for request_id: {request_id} , run_number: {run_number} . "
                     f"Executing query: {DELETE_SUPPRESSION_MATCH_DETAILED_STATS},({request_id},{run_number}) ")
         mysql_cursor.execute(DELETE_SUPPRESSION_MATCH_DETAILED_STATS, (request_id, run_number))
@@ -1251,12 +1253,12 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
 
         profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'PROFILE_NON_MATCH'" \
                                              f" from (select distinct a.email_id from {main_request_table} a left join" \
-                                             f" {profile_table} b on a.email_id = b.{email_field} where b.{email_field}" \
+                                             f" {profile_table} b on a.email_id = lower(trim(b.{email_field})) where b.{email_field}" \
                                              f" is null) b where a.email_id = b.email_id and do_suppressionStatus = 'CLEAN'"
         logger.info(f"Suppressing profile non-match records in {main_request_table}. Executing"
                     f" Query: {profile_non_match_filtration_query}")
         sf_cursor.execute(profile_non_match_filtration_query)
-        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
                                                                        main_request_details['runNumber'], 'NA','Suppression', 'NA',
                                                                        'Profile non-match filtration', counts_before_filter,
@@ -1271,42 +1273,42 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
             sf_cursor.close()
             sf_conn.close()
 
-def data_append(main_request_details , filter_details, result_table, logger):
+def data_append(main_request_details , filter_details, main_request_table, logger, mysql_cursor):
     if filter_details['appendPostalFields']:
-        result_table = append_fields(result_table, POSTAL_TABLE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger)
+        append_fields('Postal', main_request_details, main_request_table, APPEND_POSTAL_FIELDS_SOURCE, filter_details['postalFields'], POSTAL_MATCH_FIELDS, logger, mysql_cursor)
     if filter_details['appendProfileFields']:
-        channel_name = main_request_details['channelName']
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor()
-        mysql_cursor.execute(f" SELECT sfQuery FROM {SOURCE_TYPES_TABLE} WHERE name LIKE '%Profile%' and channelName = '{channel_name}'")
-        profile_table = mysql_cursor.fetchone()[0]
-        result_table = append_fields(result_table, profile_table, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger)
+        append_fields('Profile', main_request_details, main_request_table, APPEND_PROFILE_FIELDS_SOURCE, filter_details['profileFields'], PROFILE_MATCH_FIELDS, logger, mysql_cursor)
 
 
-def append_fields(result_table, source_table, to_append_columns, match_keys,  logger):
+def append_fields(append_category, main_request_details, main_request_table, fetch_source_query, to_append_columns, match_keys,  logger, mysql_cursor):
     try:
-        logger.info("Executing method append_fields")
+        mysql_cursor.execute(fetch_source_query,(main_request_details['channelName'],))
+        source_details = mysql_cursor.fetchone()
+        sf_database = source_details['sfDatabase']
+        sf_schema = source_details['sfSchema']
+        sf_table = source_details['sfTable']
+        sf_query = source_details['sfQuery']
+        if sf_table is not None and sf_table != 'NULL':
+            source_table = f"{sf_database}.{sf_schema}.{sf_table}"
+        else:
+            source_table = "(" + sf_query + ")"
         logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         logger.info("Snowflake connection acquired successfully...")
+        logger.info(f"Initiated {append_category} fields appending process")
         alter_fields_list = to_append_columns.split(",")
-        sf_alter_table_query = f"alter table  {result_table}  add column "
-        sf_alter_table_query += " varchar , ".join(i for i in alter_fields_list)
+        sf_alter_table_query = f"alter table {main_request_table} add column if not exists "
+        sf_alter_table_query += " varchar , if not exists ".join(i for i in alter_fields_list)
         sf_alter_table_query += " varchar"
         logger.info(f"Executing query: {sf_alter_table_query}")
         sf_cursor.execute(sf_alter_table_query)
-        logger.info(f"{result_table} altered successfully")
+        logger.info(f"{main_request_table} altered successfully")
         alter_fields_list = to_append_columns.split(",")
-        sf_update_table_query = f"MERGE INTO {result_table}  a using ({source_table}) b ON "
-        #sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_keys.split(",")])
-        sf_update_table_query += " AND ".join([f"a.{ 'EMAIL_ID' if key == 'EMAIL' else  'EMAIL_MD5' if key== 'MD5HASH' else key } = b.{key}" for key in match_keys.split(",")])
-        sf_update_table_query += " WHEN MATCHED THEN  UPDATE SET "
-        sf_update_table_query += ", ".join([f"a.{field} = b.{field}" for field in alter_fields_list])
+        sf_update_table_query = f'''UPDATE {main_request_table} a set {", ".join([f"a.{field} = b.{field}" for field in alter_fields_list])} from {source_table} b where {" AND ".join([f"a.{'EMAIL_ID' if key == 'EMAIL' else 'EMAIL_MD5' if key == 'MD5HASH' else key} = b.{key}" for key in match_keys.split(",")])} and a.do_suppressionStatus = 'CLEAN'  and a.do_matchStatus != 'NON_MATCH' '''
         logger.info(f"Executing query:  {sf_update_table_query}")
         sf_cursor.execute(sf_update_table_query)
-        logger.info("Fields appended successfully...")
-        return result_table
+        logger.info(f"{append_category} fields appended successfully...")
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
         raise Exception(str(e)+ str(traceback.format_exc()))
@@ -1314,7 +1316,6 @@ def append_fields(result_table, source_table, to_append_columns, match_keys,  lo
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
-
 
 
 def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_request_details, main_request_table,
@@ -1371,9 +1372,9 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
                 if is_first_match_filter:
                     counts_before_filter = 0
                     is_first_match_filter = False
-                counts_after_filter = counts_before_filter + sf_cursor.rowcount
-            elif type_of_request == "Suppress":
-                counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                counts_after_filter = get_record_count(main_request_table, sf_cursor)
+            if type_of_request == "Suppress":
+                counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
                                   main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
@@ -1399,6 +1400,63 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
         if 'connection' in locals() and channel_files_db_conn.is_connected():
             channel_files_db_cursor.close()
             channel_files_db_conn.close()
+        if 'connection' in locals() and sf_conn.is_connected():
+            sf_cursor.close()
+            sf_conn.close()
+
+def jornaya_and_mockingbird_match(category, current_count, main_request_table, logger, mysql_cursor, main_request_details, category_match_details):
+    try:
+        counts_before_filter = current_count
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
+        if category == 'Jornaya':
+            source_table = JORNAYA_TABLE
+            filter_name = 'Jornaya Non-match Filter'
+            match_field = 'do_jornayaMatch'
+            match_value = 'JORNAYA_MATCH'
+            non_match_value = 'JORNAYA_NON_MATCH'
+        elif category == 'Mockingbird':
+            source_table = MOCKINGBIRD_TABLE
+            filter_name = 'Mockingbird Non-match Filter'
+            match_field = 'do_mockingbirdMatch'
+            match_value = 'MB_MATCH'
+            non_match_value = 'MB_NON_MATCH'
+
+        if category_match_details['searchType'] == 'between':
+            category_match_details['value'] = "'" + category_match_details['value'] + "'"
+            category_match_details['value'] = category_match_details['value'].replace(',', '\' and \'')
+        if category_match_details['searchType'] == '>=':
+            category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days'"
+
+        alter_query = f"alter table {main_request_table} add column {match_field} varchar default '{non_match_value}'"
+        logger.info(f"Executing query: {alter_query}")
+        sf_cursor.execute(alter_query)
+        sf_query = f"update {main_request_table} a set {match_field} = '{match_value}' from {source_table} b where " \
+                   f"a.EMAIL_MD5 = b.EMAIL_MD5 and a.do_suppressionStatus = 'CLEAN' and " \
+                   f"b.LAST_ACTION_DATE {category_match_details['searchType']} {category_match_details['value']}"
+        logger.info(f"Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
+
+        if category_match_details['nonMatchData']:
+            logger.info(f"Opted to consider {category} non-matched data as well")
+        else:
+            sf_query = f"update {main_request_table} set do_suppressionStatus = '{filter_name}' " \
+                       f"where {match_field} = '{non_match_value}' and do_suppressionStatus = 'CLEAN'"
+            logger.info(f"Suppressing {category} non-match records in {main_request_table}. Executing"
+                        f" Query: {sf_query}")
+            sf_cursor.execute(sf_query)
+
+        counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
+                                                                       main_request_details['runNumber'], 'NA','Suppression', 'NA',
+                                                                       filter_name, counts_before_filter,
+                                                                       counts_after_filter, 0, 0))
+        return counts_after_filter
+    except Exception as e:
+        logger.error(f"Exception occurred while performing {category} non-match filtration. {str(e)} " + str(traceback.format_exc()))
+        raise Exception(
+            f"Exception occurred while performing {category} non-match filtration. {str(e)} " + str(traceback.format_exc()))
+    finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
@@ -1524,11 +1582,10 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 if is_first_match_filter:
                     counts_before_filter = 0
                     is_first_match_filter = False
-                counts_after_filter = counts_before_filter + sf_cursor.rowcount
                 filter_type = 'Match'
             elif type_of_request == "Suppress":
-                counts_after_filter = counts_before_filter - sf_cursor.rowcount
                 filter_type = 'Suppression'
+            counts_after_filter = get_record_count(main_request_table, sf_cursor)
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
                                   main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
@@ -1676,14 +1733,12 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                     if is_first_file:
                         counts_before_filter = 0
                         is_first_file = False
-                    counts_after_filter = counts_before_filter + sf_cursor.rowcount
-                elif type == "Suppression":
-                    counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                counts_after_filter = get_offer_record_count(main_request_table, sf_cursor, offer_id)
                 if str(offer_id) == str(associate_offer_id):
                     filter_type = f"MainOffer_File_{type}"
                 else:
                     filter_type = f"SubOffer_File_{type}"
-
+                offer_logger.info(f"Executing: {INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,f'{static_file_name}', counts_before_filter, counts_after_filter, download_count,insert_count)}")
                 mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                      (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
                                       f'{static_file_name}', counts_before_filter, counts_after_filter, download_count,
@@ -1727,7 +1782,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                     f"a.do_matchStatus_{offer_id} != 'NON_MATCH' and do_suppressionStatus_{offer_id} = 'CLEAN'"
             offer_logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
-            counts_after_filter = counts_before_filter - sf_cursor.rowcount
+            counts_after_filter = get_offer_record_count(main_request_table, sf_cursor, offer_id)
             mysql_cursor.execute(f"update {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} set filterType='{filter_type}',"
                                  f"filterName='{associate_offer_id}',countsBeforeFilter={counts_before_filter}"
                                  f",countsAfterFilter={counts_after_filter} where requestId={request_id} and "
@@ -1742,15 +1797,24 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         if str(channel).upper() != 'INFS':
             def conversions_supp(filter_type, associate_offer_id, current_count):
                 counts_before_filter = current_count
-                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                        f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
-                                        f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
-                                        f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
-                                        f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
-                                        f" do_suppressionStatus_{offer_id} = 'CLEAN'"
+                if str(channel).upper() == 'GREEN':
+                    sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                            f"from (select email from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                            f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                            f"b where a.email_id=b.email and do_matchStatus != 'NON_MATCH' and " \
+                                            f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                            f" do_suppressionStatus_{offer_id} = 'CLEAN'"
+                elif str(channel).upper() == 'APPTNESS':
+                    sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                            f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                            f"offer_id='{associate_offer_id}' and upper(channel)='APPTNESS' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                            f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
+                                            f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                            f" do_suppressionStatus_{offer_id} = 'CLEAN'"
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
-                counts_after_filter = counts_before_filter - sf_cursor.rowcount
+                counts_after_filter = get_offer_record_count(main_request_table, sf_cursor, offer_id)
+                offer_logger.info(f"Executing: {INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0)}")
                 mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                      (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
                                       f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0))
@@ -1788,7 +1852,13 @@ def get_record_count(table, sf_cursor):
     sf_cursor.execute(f"select count(1) from {table} where do_suppressionStatus = 'CLEAN'  and do_matchStatus != 'NON_MATCH'")
     return sf_cursor.fetchone()[0]
 
-
+def get_clean_record_count(table, sf_cursor):
+    sf_cursor.execute(f"select count(1) from {table} where do_suppressionStatus = 'CLEAN' ")
+    return sf_cursor.fetchone()[0]
+def get_offer_record_count(table, sf_cursor, offerid):
+    sf_cursor.execute(f"select count(1) from {table} where do_suppressionStatus = 'CLEAN'  and do_matchStatus != "
+                      f"'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN'  and do_matchStatus_{offerid} != 'NON_MATCH'")
+    return sf_cursor.fetchone()[0]
 
 def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
     try:
@@ -2007,7 +2077,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
             'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
 
-        sf_alter_temp_table_query = f"alter table {source_table} add column account_name varchar"
+        sf_alter_temp_table_query = f"alter table {source_table} add column if not exists account_name varchar"
         logger.info(f" Executing query : {sf_alter_temp_table_query}")
         sf_cursor.execute(sf_alter_temp_table_query)
         sf_update_temp_table_query = f"update {source_table} a set a.account_name=b.account_name from INFS_LPT.INFS_ORANGE_MAPPING_TABLE b where a.LIST_ID=b.listid"
@@ -2083,9 +2153,6 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
         result.append(res)
 
-        sf_alter_main_table_query = f"alter table  {source_table} drop column account_name "
-        logger.info(f"Executing query : {sf_alter_main_table_query}")
-        sf_cursor.execute(sf_alter_main_table_query)
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
@@ -2150,7 +2217,7 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
                           f"{POSTAL_TABLE} b where a.EMAIL_MD5 = b.md5hash and b.{filter} in ('{filter_values}') and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
         main_logger.info(f"Performing {filter_type}, Executing Query: {sf_update_query}")
         sf_cursor.execute(sf_update_query)
-        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        counts_after_filter = get_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],
                                                                       main_request_details['runNumber'],'NA','Suppression','NA'
                                                                       ,filter_type,counts_before_filter,counts_after_filter,0,0))
@@ -2312,7 +2379,7 @@ class FeedLevelSuppression():
                 if supCode[i] == 'FUNSUB':
                     funsubCode = f"{funsubCode},'A'"
                     fjoinCnd = f' left outer join LIST_PROCESSING.GLOBALFP_UNSUBS_SF funsub on lower(a.EMAIL_ID)= lower(funsub.email)' \
-                               f' and funsub.channelid={liveFeed.channelId}  and a.LIST_ID=funsub.listid '
+                               f' and ((funsub.channelid={liveFeed.channelId} and a.LIST_ID=funsub.listid)  or funsub.channelid=0 ) '
                     wfcond = ' and funsub.email is not null '
                     runQue = True
 
@@ -2537,7 +2604,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         sf_cursor.execute(f"copy into {purdue_supp_table} from @purdue_stage_{request_id}_{run_number}_supp")
         sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM {purdue_supp_table} b "
                           f"WHERE a.email_md5=b.email_md5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
-        counts_after_filter = counts_before_filter - sf_cursor.rowcount
+        counts_after_filter = get_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
                                                                       ,'Purdue',counts_before_filter,counts_after_filter,0,0))
         logger.info(f"Purdue suppression completed.")
@@ -2588,7 +2655,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
                     sf_cursor.execute(offer_stats_pulling_query)
                     stats += sf_cursor.fetchall()
                 #replace None values
-            stats = str(stats).replace("'",'"')
+            stats = str(stats).replace("'",'"').replace(': None',': ""')
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
