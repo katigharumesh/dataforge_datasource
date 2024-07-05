@@ -1798,18 +1798,32 @@ def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         logger.info("Acquired snowflake connection successfully")
-        for supp_table in GREEN_GLOBAL_SUPP_TABLES:
+        logger.info("Invalid Emails Suppression starts... ")
+        res = {}
+        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res['insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
+        res['filterName'] = "Invalid Email addresses"
+        res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus =  CASE WHEN REGEXP_LIKE(a.EMAIL_ID, '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$') THEN 'CLEAN' else 'Invalid Email addresses' WHERE a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
+        result.append(res)
+        for supp_dict in GREEN_GLOBAL_SUPP_TABLES:
+            supp_key = tuple(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
             res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-            res['filterName'] = supp_table
+            res['filterName'] = supp_key
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_table}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_table}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                logger.info(f"{supp_table} suppression done successfully...")
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
+            logger.info(f"{supp_key} suppression done successfully...")
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
@@ -1839,37 +1853,51 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         logger.info("Acquired snowflake connection successfully")
-        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email']:
+        for supp_dict in GREEN_FEED_LEVEL_SUPP_TABLES['email']:
+            supp_key = list(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
             res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-            res['filterName'] = supp_table
+            res['filterName'] = supp_key
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_table}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                logger.info(f"{supp_table} suppression done successfully...")
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
-        for supp_table in GREEN_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            logger.info(f"{supp_key} suppression done successfully...")
+        # GREEN GLOBAL SUPPRESSION
+        res = {}
+        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
+            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
+        res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
+        res['filterName'] = "Green Global Suppression"
+        sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = 'Green Global Suppression' FROM (select email from GREEN_LPT.ORIGIN_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND union all select email from GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS union all select email from GREEN_LPT.PFM_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE union all select email from GREEN_LPT.GREEN_UNSUBS) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and a.LIST_ID not in (select listid from GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3))"
+        logger.info(f"Executing query: {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        logger.info(f"Green Global Suppression done successfully...")
+        res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
+        result.append(res)
+        current_count = get_record_count(f"{source_table}", sf_cursor)
+        for supp_dict in GREEN_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            supp_key = list(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
             res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            value_to_set = supp_table
-            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
-                temp_table_name = supp_table.split()
-                try:
-                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
-                except:
-                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
-            res['filterName'] = value_to_set
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
+            res['filterName'] = supp_key
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                logger.info(f"{supp_table} suppression done successfully...")
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
+            logger.info(f"{supp_key} suppression done successfully...")
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
@@ -1899,38 +1927,45 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         logger.info("Acquired snowflake connection successfully")
-        for supp_table in INFS_FEED_LEVEL_SUPP_TABLES['email']:
+        sf_alter_temp_table_query = f"alter table {source_table} add column if not exists account_name varchar"
+        logger.info(f" Executing query : {sf_alter_temp_table_query}")
+        sf_cursor.execute(sf_alter_temp_table_query)
+        sf_update_temp_table_query = f"update {source_table} a set a.account_name=b.account_name from INFS_LPT.INFS_ORANGE_MAPPING_TABLE b where a.LIST_ID=b.listid"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+
+        for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['email']:
+            supp_key = list(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
             res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-            res['filterName'] = supp_table
+            res['filterName'] = supp_key
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_table}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
-            res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
-            result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
-        for supp_table in INFS_FEED_LEVEL_SUPP_TABLES['email_listid']:
-            res = {}
-            res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-                'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-            res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            value_to_set = supp_table
-            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
-                temp_table_name = supp_table.split()
-                try:
-                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
-                except:
-                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
-            res['filterName'] = value_to_set
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
-            if value_to_set == "INFS_LPT.unsub_details_oteam":
-                sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{value_to_set}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
+                logger.info(f"{supp_table} suppression done successfully...")
+            res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
+            result.append(res)
+            logger.info(f"{supp_key} suppression done successfully...")
+        for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['email_listid']:
+            supp_key = list(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
+            res = {}
+            res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
+                'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
+            res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
+            res['filterName'] = supp_key
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                if supp_table == "INFS_LPT.unsub_details_oteam":
+                    sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{supp_key}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f"Executing query:  {sf_update_table_query}")
+                    sf_cursor.execute(sf_update_table_query)
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_table} suppression done successfully...")
@@ -2533,6 +2568,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
+        # replace none values in stats
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         if len(stats) > STATS_LIMIT:
@@ -2551,6 +2587,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
                     logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
                     sf_cursor.execute(offer_stats_pulling_query)
                     stats += sf_cursor.fetchall()
+                #replace None values
             stats = str(stats).replace("'",'"')
             mysql_cursor.execute(INSERT_INTO_STATS_TABLE_QUERY, (str(main_request_details['id']), str(main_request_details['ScheduleId']), str(main_request_details['runNumber']), str(stats)))
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")

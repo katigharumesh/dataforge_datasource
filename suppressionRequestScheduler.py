@@ -1,6 +1,6 @@
 from serviceconfigurations import *
 from basicudfs import *
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from suppressionRequestProcessor import *
 import mysql.connector
 import logging
@@ -86,18 +86,30 @@ class RequestPicker:
         logger.info(f"Thread Process Started :: {datetime.now()}")
         try:
             with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-                waitingRequests = self.getrequests()
-                if len(waitingRequests) > 0:
-                    logger.info(f"Waiting Requests are :: {waitingRequests}")
-                    for request in waitingRequests:
-                        resultList = [False]
-                        executor.submit(self.processrequests, request, resultList)
-                else:
-                    logger.info(f"No waiting requests found ....")
-                    time.sleep(5)
+                while True:
+                    try:
+                        waitingRequests = self.getrequests()
+                        if len(waitingRequests) > 0:
+                            logger.info(f"Waiting Requests are :: {waitingRequests}")
+                            futures = [executor.submit(self.processrequests, request) for request in waitingRequests]
+                            for future in as_completed(futures):
+                                try:
+                                    future.result()
+                                except Exception as e:
+                                    logger.error(f"Error in processing request :: {e}")
+                                    logger.error(traceback.format_exc())
+                        else:
+                            logger.info(f"No waiting requests found ....")
+                        time.sleep(5)
+
+                    except Exception as e:
+                        logger.error(f"Error in ThreadPoolExecutor loop() :: {e}")
+                        logger.error(traceback.format_exc())
+                        time.sleep(5)
         except Exception as e:
             logger.error(f"Error in requestThreadProcess() :: {e}")
-            logger.error(traceback.print_exc())
+            logger.error(traceback.format_exc())
+
 
 if __name__ == '__main__':
     obj = RequestPicker()
