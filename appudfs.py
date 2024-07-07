@@ -72,16 +72,19 @@ def load_input_source(type_of_request, source, main_request_details):
                     if dict(filter).__len__() != 1:
                         if filter['dataType'] == 'String' and filter['searchType'] in ('like', 'not like'):
                             filter['value'] = f"%{filter['value']}%"
-                        if filter['dataType'] != 'Number' and filter['searchType'] != '>=':
+                        if filter['dataType'] != 'Number' and filter['searchType'] != '>=' and filter.get('dateRangeType','NA') != 'R':
                             filter['value'] = "'" + filter['value'] + "'"
                         if filter['searchType'] in ('in', 'not in') and filter['dataType'] == 'Number':
                             filter['value'] = "(" + filter['value'] + ")"
                         elif filter['searchType'] in ('in', 'not in') and filter['dataType'] != 'Number':
                             filter['value'] = "(" + filter['value'].replace(',', '\',\'') + ")"
-                        if filter['searchType'] == 'between' and filter['dataType'] != 'Number':
-                            filter['value'] = filter['value'].replace(',', '\' and \'')
-                        elif filter['searchType'] == 'between' and filter['dataType'] == 'Number':
+                        if filter['searchType'] == 'between' and filter['dataType'] == 'Number':
                             filter['value'] = filter['value'].replace(',', ' and ')
+                        elif filter['searchType'] == 'between' and filter['dateRangeType'] == 'C':
+                            filter['value'] = filter['value'].replace(',', '\' and \'')
+                        elif filter['searchType'] == 'between' and filter['dateRangeType'] == 'R':
+                            filter['value'] = f"current_date() - interval '{str(filter['value']).split(',')[0]} days'" \
+                                              f" and current_date() - interval '{str(filter['value']).split(',')[1]} days'"
                         if filter['searchType'] == '>=':
                             filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
@@ -1423,9 +1426,13 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
             non_match_value = 'MB_NON_MATCH'
 
         if category_match_details['searchType'] == 'between':
-            category_match_details['value'] = "'" + category_match_details['value'] + "'"
-            category_match_details['value'] = category_match_details['value'].replace(',', '\' and \'')
-        if category_match_details['searchType'] == '>=':
+            if category_match_details['dateRangeType'] == 'C':
+                category_match_details['value'] = "'" + category_match_details['value'] + "'"
+                category_match_details['value'] = category_match_details['value'].replace(',', '\' and \'')
+            elif category_match_details['dateRangeType'] == 'R':
+                category_match_details['value'] = f"current_date() - interval '{str(category_match_details['value']).split(',')[0]} days'" \
+                                                  f" and current_date() - interval '{str(category_match_details['value']).split(',')[1]} days'"
+        elif category_match_details['searchType'] == '>=':
             category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days'"
 
         alter_query = f"alter table {main_request_table} add column {match_field} varchar default '{non_match_value}'"
@@ -1439,12 +1446,13 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
 
         if category_match_details['nonMatchData']:
             logger.info(f"Opted to consider {category} non-matched data as well")
-        else:
-            sf_query = f"update {main_request_table} set do_suppressionStatus = '{filter_name}' " \
-                       f"where {match_field} = '{non_match_value}' and do_suppressionStatus = 'CLEAN'"
-            logger.info(f"Suppressing {category} non-match records in {main_request_table}. Executing"
-                        f" Query: {sf_query}")
-            sf_cursor.execute(sf_query)
+            return counts_before_filter
+
+        sf_query = f"update {main_request_table} set do_suppressionStatus = '{filter_name}' " \
+                   f"where {match_field} = '{non_match_value}' and do_suppressionStatus = 'CLEAN'"
+        logger.info(f"Suppressing {category} non-match records in {main_request_table}. Executing"
+                    f" Query: {sf_query}")
+        sf_cursor.execute(sf_query)
 
         counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
@@ -2816,4 +2824,11 @@ def add_table(main_request_details, run_number):
             main_conn.close()
 
     return table_msg
+
+
+class CustomError(Exception):
+    def __int__(self,code):
+        error_desc = ERROR_CODES[self.code]
+        raise Exception(error_desc)
+
 
