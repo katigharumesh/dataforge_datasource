@@ -2011,7 +2011,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         sf_update_temp_table_query = f"update {source_table} a set a.account_name=b.account_name from INFS_LPT.INFS_ORANGE_MAPPING_TABLE b where a.LIST_ID=b.listid"
         logger.info(f" Executing query : {sf_update_temp_table_query}")
         sf_cursor.execute(sf_update_temp_table_query)
-
+        # email level
         for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['email']:
             supp_key = list(supp_dict.keys())[0]
             supp_tables = supp_dict[supp_key]
@@ -2028,6 +2028,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_key} suppression done successfully...")
+        #email and listid ,includes account name suppressions also
         for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['email_listid']:
             supp_key = list(supp_dict.keys())[0]
             supp_tables = supp_dict[supp_key]
@@ -2040,127 +2041,68 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
                 sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
-                if supp_table == "INFS_LPT.unsub_details_oteam":
+                logger.info(f"{supp_table} suppression done successfully...")
+                if supp_key == "Account Level Unsubs":
                     sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{supp_key}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f"Executing query:  {sf_update_table_query}")
                     sf_cursor.execute(sf_update_table_query)
+                    logger.info(f"{supp_table} account level suppression done successfully...")
+                elif supp_key == "IEP Unsubs":
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) ) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f" Executing query : {sf_update_temp_table_query}")
+                    sf_cursor.execute(sf_update_temp_table_query)
+                    logger.info(f"{supp_table} account level suppression done successfully...")
+                elif supp_key == "Orange Account Unsubs":
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f" Executing query : {sf_update_temp_table_query}")
+                    sf_cursor.execute(sf_update_temp_table_query)
+                    logger.info(f"{supp_table}  account level suppression done successfully...")
+                elif supp_key == "Static Account level INFS Unsubs":
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f" Executing query : {sf_update_temp_table_query}")
+                    sf_cursor.execute(sf_update_temp_table_query)
+                    logger.info(f"{supp_table} account level suppression done successfully...")
+                else:
+                    pass
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
-        for supp_table in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
+            logger.info(f"{supp_key} suppression done successfully...")
+        for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
+            supp_key = list(supp_dict.keys())[0]
+            supp_tables = supp_dict[supp_key]
             res = {}
             res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
                 'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            value_to_set = supp_table
-            if "select" in supp_table or "SELECT" in supp_table or "join" in supp_table or "JOIN" in supp_table:
-                temp_table_name = supp_table.split()
-                try:
-                    value_to_set = temp_table_name[temp_table_name.index("from") + 1]
-                except:
-                    value_to_set = temp_table_name[temp_table_name.index("FROM") + 1]
-            res['filterName'] = value_to_set
-            sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{value_to_set}' FROM ({supp_table}) b WHERE  a.PROFILE_ID = b.profileid AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
-            logger.info(f"Executing query:  {sf_update_table_query}")
-            sf_cursor.execute(sf_update_table_query)
+            res['filterName'] = supp_key
+            for supp_table in supp_tables:
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.PROFILE_ID = b.profileid AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                logger.info(f"Executing query:  {sf_update_table_query}")
+                sf_cursor.execute(sf_update_table_query)
+                logger.info(f"{supp_table} suppression done successfully...")
+                if supp_key == "Account level Conversions":
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f" Executing query : {sf_update_temp_table_query}")
+                    sf_cursor.execute(sf_update_temp_table_query)
+                    logger.info(f"{supp_table} account level suppression done successfully...")
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
-            logger.info(f"{supp_table} suppression done successfully...")
+            logger.info(f"{supp_key} suppression done successfully...")
         logger.info("Applying must and should suppressions...")
-
         # BLUE_CLIENT_DATA_SUPPRESSION
         res = {}
         res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
             'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        res['filterName'] = 'INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION'
+        res['filterName'] = 'INFS Optizmo Unsubs'
         res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION' FROM INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.list_id in (select listid from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'INFS Optizmo Unsubs' FROM INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.list_id in (select listid from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
         logger.info(f"Executing query:  {sf_update_table_query}")
         sf_cursor.execute(sf_update_table_query)
+        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS Optizmo Unsubs'  from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
         res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
         result.append(res)
-
-        # ACCOUNT NAME  SUPPRESSION
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-
-        sf_alter_temp_table_query = f"alter table {source_table} add column if not exists account_name varchar"
-        logger.info(f" Executing query : {sf_alter_temp_table_query}")
-        sf_cursor.execute(sf_alter_temp_table_query)
-        sf_update_temp_table_query = f"update {source_table} a set a.account_name=b.account_name from INFS_LPT.INFS_ORANGE_MAPPING_TABLE b where a.LIST_ID=b.listid"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-
-        value_to_set = "INFS_LPT.unsub_details_oteam_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        value_to_set = "INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.profileid,d.account_name from INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.PROFILE_ID=b.profileid and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        value_to_set = "INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        value_to_set = "INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        value_to_set = "INFS_LPT.infs_account_level_static_suppression_data_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        value_to_set = "INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_ACCOUNT"
-        res['filterName'] = value_to_set
-        res['countsBeforeFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{value_to_set}' from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(f"{source_table}", sf_cursor)
-        result.append(res)
-
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
