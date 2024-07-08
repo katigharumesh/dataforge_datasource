@@ -518,7 +518,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     last_modified_time = file_details_dict["last_modified_time"]
                     file_status = file_details_dict['status']
                     error_desc = file_details_dict['error_msg']
-                    if type_of_request == "Match" or type_of_request == "Suppress":
+                    if type_of_request == "Match" or type_of_request == "Suppression":
                         if file_status == 'E':
                             raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
                         continue
@@ -557,7 +557,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                 last_modified_time = file_details_dict["last_modified_time"]
                 file_status = file_details_dict['status']
                 error_desc = file_details_dict['error_msg']
-                if type_of_request == "Match" or type_of_request == "Suppress":
+                if type_of_request == "Match" or type_of_request == "Suppression":
                     if file_status == 'E':
                         raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
                     continue
@@ -1102,8 +1102,8 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         logger.info(f"Deleting old detailed stats, if existent for request_id: {request_id} , run_number: {run_number} . "
                     f"Executing query: {DELETE_SUPPRESSION_MATCH_DETAILED_STATS},({request_id},{run_number}) ")
         mysql_cursor.execute(DELETE_SUPPRESSION_MATCH_DETAILED_STATS, (request_id, run_number))
-        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial count',0,counts_after_filter,0,0)}")
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial count',0,counts_after_filter,0,0))
+        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_after_filter,0,0)}")
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_after_filter,0,0))
         counts_before_filter = counts_after_filter
 #Removing duplicates based on feed type
         logger.info(f"Performing deduplication based on feed level and request filter level configured "
@@ -1119,11 +1119,9 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                           f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
             source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId'
-            filter_name = 'Feed and File level duplicates suppression'
             dedup_field = ',do_inputSourceMappingId'
         else:
             source_join_fields = ''
-            filter_name = 'Feed and Across files duplicates suppression'
             dedup_field = ''
         if channel_name == 'GREEN':
             for source in sources_loaded:
@@ -1209,7 +1207,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         counts_after_filter = sf_cursor.fetchone()[0]
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                              (request_id, schedule_id, run_number, 'NA', 'Suppression', 'NA'
-                              , filter_name, counts_before_filter, counts_after_filter, 0, 0))
+                              , 'De-dupe Filter', counts_before_filter, counts_after_filter, 0, 0))
         return counts_after_filter, main_input_source_table
     except Exception as e:
         logger.error(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
@@ -1228,17 +1226,16 @@ def isps_filtration(current_count, main_request_table, isps, logger, mysql_curso
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         isps_filter = str(isps).replace(",", "','")
-        isps_filtration_query = f"update {main_request_table} set do_suppressionStatus = 'ISP_NON_MATCH' where " \
+        isps_filtration_query = f"update {main_request_table} set do_suppressionStatus = 'ISP Filter' where " \
                                 f"split_part(email_id,'@',-1) not in ('{isps_filter}') and do_suppressionStatus='CLEAN'"
         logger.info(f"Suppressing non-configured isps records in {main_request_table}. Executing Query: {isps_filtration_query}")
         sf_cursor.execute(isps_filtration_query)
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
-                                                                      ,'Configured isps filtration',counts_before_filter,counts_after_filter,0,0))
+                                                                      ,'ISP Filter',counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
-        logger.error(f"Exception occurred while performing isps filtration. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while performing isps filtration. {str(e)} " + str(traceback.format_exc()))
+        raise CustomException('DO7',e)
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1254,7 +1251,7 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         profile_table = profile_table_details['sfTableName']
         email_field = profile_table_details['emailField']
 
-        profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'PROFILE_NON_MATCH'" \
+        profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'Profile Non-match Filter'" \
                                              f" from (select distinct a.email_id from {main_request_table} a left join" \
                                              f" {profile_table} b on a.email_id = lower(trim(b.{email_field})) where b.{email_field}" \
                                              f" is null) b where a.email_id = b.email_id and do_suppressionStatus = 'CLEAN'"
@@ -1264,7 +1261,7 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
                                                                        main_request_details['runNumber'], 'NA','Suppression', 'NA',
-                                                                       'Profile non-match filtration', counts_before_filter,
+                                                                       'Profile Non-match Filter', counts_before_filter,
                                                                        counts_after_filter, 0, 0))
         return counts_after_filter
     except Exception as e:
@@ -1285,6 +1282,9 @@ def data_append(main_request_details , filter_details, main_request_table, logge
 
 def append_fields(append_category, main_request_details, main_request_table, fetch_source_query, to_append_columns, match_keys,  logger, mysql_cursor):
     try:
+        if to_append_columns == '':
+            logger.info("Due to empty list of appending_columns has been returned, skipping append_fields execution")
+            return 0
         mysql_cursor.execute(fetch_source_query,(main_request_details['channelName'],))
         source_details = mysql_cursor.fetchone()
         sf_database = source_details['sfDatabase']
@@ -1314,7 +1314,7 @@ def append_fields(append_category, main_request_details, main_request_table, fet
         logger.info(f"{append_category} fields appended successfully...")
     except Exception as e:
         logger.error(f"Exception occurred: Please look into it... {str(e)}"+ str(traceback.format_exc()))
-        raise Exception(str(e)+ str(traceback.format_exc()))
+        raise Exception(str(e) + str(traceback.format_exc()))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1477,7 +1477,7 @@ def update_default_values(type_of_request, main_request_table, logger):
             value_to_set = 'MATCH'
             where_cond_column = 'do_suppressionStatus'
             where_cond_column_value = 'CLEAN'
-        if type_of_request == "Suppress":
+        if type_of_request == "Suppression":
             column_to_update = 'do_suppressionStatus'
             value_to_set = 'CLEAN'
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -1502,7 +1502,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                                       main_request_table, mysql_cursor, main_logger, current_count):
     if type_of_request == "Match":
         key_to_fetch = 'matchedDataSources'
-    if type_of_request == "Suppress":
+    if type_of_request == "Suppression":
         key_to_fetch = 'filterDataSources'
     if filter_details[key_to_fetch] is not None:
         match_or_filter_source_details = json.loads(str(filter_details[key_to_fetch]).strip('"').replace("'", '"'))
@@ -1511,7 +1511,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
     match_or_filter_sources = []
     if len(match_or_filter_source_details) == 0:
     #if match_or_filter_source_details['DataSource'] == [] and match_or_filter_source_details['ByField'] == []:
-        main_logger.info(f"No {type_of_request} sources are chosen.")
+        main_logger.info(f"No {type_of_request} filter sources are chosen.")
         if type_of_request == "Match":
             update_default_values(type_of_request, main_request_table, main_logger)
         return current_count
@@ -1526,13 +1526,16 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                 data_source_details_dict = json.loads(str(i).strip('"').replace("'", '"'))
                 data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
                 columns = data_source_details_dict['columns']
-                match_or_filter_sources.append(tuple([data_source_table_name, columns, 'DataSource']))
+                mysql_cursor.execute(FETCH_DATASOURCE_NAME, (data_source_details_dict['dataSourceId'],))
+                data_source_name = 'Dataset ' + str(mysql_cursor.fetchone()['name'])
+                match_or_filter_sources.append(tuple([data_source_table_name, columns, data_source_name, 'DataSource']))
         if 'ByField' in match_or_filter_source_details.keys():
             for filter in list(match_or_filter_source_details['ByField']):
-                match_or_filter_sources.append(tuple(['', filter, 'ByField']))
+                by_field_desc = f"By Attribute: {filter['fieldName']} {filter['searchType']} {filter['value']} ".replace("'",'"')
+                match_or_filter_sources.append(tuple(['', filter, by_field_desc, 'ByField']))
     current_count = perform_filter_or_match(type_of_request, main_request_details, main_request_table,
                                             match_or_filter_sources, mysql_cursor, main_logger, current_count)
-    main_logger.info(f"All {type_of_request} sources are successfully processed.")
+    main_logger.info(f"All {type_of_request} filter sources are successfully processed.")
     return current_count
 
 
@@ -1545,7 +1548,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         if type_of_request == "Match":
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
-        if type_of_request == "Suppress":
+        if type_of_request == "Suppression":
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
         logger.info(f"perform_filter_or_match method for {type_of_request} invoked..")
@@ -1554,7 +1557,8 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         sf_cursor = sf_conn.cursor()
         logger.info("Snowflake connection acquired successfully...")
         for filter_source in sorted_filter_sources_loaded:
-            if filter_source[2] == 'ByField':
+            filter_name = filter_source[2]
+            if filter_source[3] == 'ByField':
                 filter = filter_source[1]
                 if filter['dataType'] == 'String' and filter['searchType'] in ('like', 'not like'):
                     filter['value'] = f"%{filter['value']}%"
@@ -1570,14 +1574,12 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                     filter['value'] = filter['value'].replace(',', ' and ')
                 if filter['searchType'] == '>=':
                     filter['value'] = f"current_date() - interval '{filter['value']} days'"
-                filter_name = f"ByField: {filter['fieldName']} {filter['searchType']} {filter['value']}".replace("'",'"')
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
             else:
                 match_fields = filter_source[1].split(",")
                 source_table = filter_source[0]
-                filter_name = source_table
-                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{source_table}' FROM {source_table} b WHERE "
+                sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} = '{filter_name}: {source_table}' FROM {source_table} b WHERE "
                 sf_update_table_query += " AND ".join([f"a.{key} = b.{key}" for key in match_fields])
             sf_update_table_query += f" AND a.{column_to_update} = '{default_value}' "
             if type_of_request == "Match":
@@ -1590,13 +1592,10 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 if is_first_match_filter:
                     counts_before_filter = 0
                     is_first_match_filter = False
-                filter_type = 'Match'
-            elif type_of_request == "Suppress":
-                filter_type = 'Suppression'
             counts_after_filter = get_record_count(main_request_table, sf_cursor)
             mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                                  (main_request_details['id'], main_request_details['ScheduleId'],
-                                  main_request_details['runNumber'], 'NA', filter_type, 'NA', filter_name,
+                                  main_request_details['runNumber'], 'NA', type_of_request, 'NA', filter_name,
                                   counts_before_filter, counts_after_filter, 0, 0))
             counts_before_filter = counts_after_filter
             logger.info(f"perform_filter_or_match method for {type_of_request} executed successfully...")
@@ -1617,8 +1616,8 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         file_source = file_source_filter_list[i]
         file_source_type_id = file_source['sourceId']
         os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
-        os.makedirs(f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
-        temp_files_path = f"{FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
+        os.makedirs(f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
+        temp_files_path = f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
         source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
         consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
         logger.info(f"Acquiring mysql connection...")
@@ -1640,7 +1639,7 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         #run_number = main_request_details['runNumber']
         schedule_id = main_request_details['ScheduleId']
         source_table = process_file_type_request(type_of_request,request_id, source_table, 1, schedule_id, source_sub_type,input_data_dict,mysql_cursor, consumer_logger, "", temp_files_path, main_request_details, hostname,port, username, password)
-        result.append(tuple([source_table, file_source['columns'], 'FileSource']))
+        result.append(tuple([source_table, file_source['columns'], f"File {file_source['filePath']}", 'FileSource']))
     return result
 
 def validate_remaining_data(main_request_details, main_request_table, mysql_cursor, logger, current_count):
@@ -1655,7 +1654,7 @@ def validate_remaining_data(main_request_details, main_request_table, mysql_curs
         counts_after_filter = get_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
                              (main_request_details['id'], main_request_details['ScheduleId'],
-                              main_request_details['runNumber'], 'NA', 'Match', 'NA', 'Validating remaining non-matched data',
+                              main_request_details['runNumber'], 'NA', 'Match', 'NA', 'Non-Matched data',
                               counts_before_filter, counts_after_filter, 0, 0))
         logger.info(f"Successfully validated remaining non-matched data.")
         return counts_after_filter
@@ -1881,7 +1880,7 @@ def apply_green_global_suppression(source_table, result_breakdown_flag, logger):
         res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res['insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
         res['filterName'] = "Invalid Email addresses"
         res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus =  CASE WHEN REGEXP_LIKE(a.EMAIL_ID, '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$') THEN 'CLEAN' else 'Invalid Email addresses' WHERE a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus =  CASE WHEN REGEXP_LIKE(a.EMAIL_ID, '{VALID_EMAILS_FORMAT}') THEN 'CLEAN' else 'Invalid Email addresses' END WHERE a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
         logger.info(f"Executing query:  {sf_update_table_query}")
         sf_cursor.execute(sf_update_table_query)
         res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
@@ -2158,9 +2157,9 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
         counts_before_filter = current_count
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
-        if filter_type == "ZIP_SUPPRESSION":
+        if filter_type == "Zipcode Suppression":
             filter = "ZIP"
-        elif filter_type == "STATE_SUPPRESSION":
+        elif filter_type == "State Suppression":
             filter = "STATE"
         filter_values = str(filter_values).replace(",", "','")
         sf_update_query = f"update {main_request_table} a set a.do_suppressionStatus = '{filter_type}' from " \
@@ -2446,7 +2445,7 @@ class FeedLevelSuppression():
             livefeedpojos = self.getLiveFeedDetails(listids)
             for livefeedpojo in livefeedpojos:
                 self.updateGlobalTable(livefeedpojo)
-            fetch_supp_codes = f" select name, code from LIVE_FEED_SUPPRESSION_RULE order by id "
+            fetch_supp_codes = f" select name, code from LIVE_FEED_SUPPRESSION_RULE where code not in ('DUPCATE','RESPON') order by id "
             with MysqlContextManager(self.mysqlcon) as mysqlcur:
                 mysqlcur.execute(fetch_supp_codes)
                 supp_codes = mysqlcur.fetchall()
@@ -2459,7 +2458,7 @@ class FeedLevelSuppression():
                         sfcur.execute(sf_query)
                         counts_after_filter = counts_before_filter - sfcur.fetchone()[0]
                     filter_details["countsBeforeFilter"], filter_details["countsAfterFilter"], \
-                        filter_details["filterName"] = counts_before_filter, counts_after_filter, supp_code[1]
+                        filter_details["filterName"] = counts_before_filter, counts_after_filter, APPTNESS_SUPP_CODES[supp_code[1]]
                     json_data.append(filter_details)
                     counts_before_filter = counts_after_filter
         except Exception as e:
@@ -2552,11 +2551,11 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         sf_cursor.execute(f"put file://{SUPP_FILE_PATH}/{request_id}/{run_number}/PURDUE_SUPP_FILES/suppression_list--PG_Unsubscribe_List_*.txt @purdue_stage_{request_id}_{run_number}_supp")
         sf_cursor.execute(f"create or replace transient table {purdue_supp_table}(email_md5 varchar)")
         sf_cursor.execute(f"copy into {purdue_supp_table} from @purdue_stage_{request_id}_{run_number}_supp")
-        sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue' FROM {purdue_supp_table} b "
+        sf_cursor.execute(f"update {main_request_table} a set a.do_suppressionStatus = 'Purdue Suppression' FROM {purdue_supp_table} b "
                           f"WHERE a.email_md5=b.email_md5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'")
         counts_after_filter = get_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(main_request_details['id'],main_request_details['ScheduleId'],main_request_details['runNumber'],'NA','Suppression','NA'
-                                                                      ,'Purdue',counts_before_filter,counts_after_filter,0,0))
+                                                                      ,'Purdue Suppression',counts_before_filter,counts_after_filter,0,0))
         logger.info(f"Purdue suppression completed.")
         return counts_after_filter
     except Exception as e:
@@ -2768,9 +2767,9 @@ def add_table(main_request_details, run_number):
     return table_msg
 
 
-class CustomError(Exception):
-    def __int__(self,code):
+class CustomException(Exception):
+    def __int__(self,code,error):
         error_desc = ERROR_CODES[self.code]
-        raise Exception(error_desc)
+        raise Exception(error_desc,error)
 
 

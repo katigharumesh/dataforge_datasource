@@ -176,6 +176,8 @@ OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.INFS_ORANGE_MAPPING_TABLE"
 
 FETCH_GM_CONFIGURED_ISPS = '''select group_concat(concat("'",ispName,"'")) as isps from ISP_DETAILS where isDeleted=0'''
 
+FETCH_DATASOURCE_NAME = f"select name from {DATASET_TABLE} where id = %s"
+
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
 
@@ -249,6 +251,8 @@ FETCH_FILTER_FILE_SOURCE_INFO = f"select b.hostname,b.port,b.username,b.password
 
 # SUPPRESSIONS tables
 
+VALID_EMAILS_FORMAT = '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+
 GREEN_GLOBAL_SUPP_TABLES = (
     {"Origin data Suppression": ( "GREEN_LPT.ORIGIN_UNIVERSE_UNSUBS", )
      },
@@ -296,6 +300,20 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
     )
 }
 
+
+APPTNESS_SUPP_CODES = {
+    "GCOMPR": "Global Complainers",
+    "CCMP": "Channel Complainers",
+    "CABUSE": "Channel Abuses",
+    "CUNSUB": "Channel Unsubs",
+    "FUNSUB": "Feed Unsubs & Abuses",
+    "GDPRSU": "GDPR Filter",
+    "EOSUPR": "EO Suppression",
+    "CANADA": "Canada Suppression",
+    "DUNSUB": "Data Partner Unsubs",
+    "ZABUSE": "Zeta Abuses",
+    "BOSUPR": "Global Bounces Suppression"
+}
 
 # email notification configurations
 SUPP_MAIL_HTML_FILE = SUPP_FILE_PATH+"/mail_{}_{}.ftl"

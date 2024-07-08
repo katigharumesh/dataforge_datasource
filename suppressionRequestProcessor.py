@@ -185,19 +185,19 @@ class Suppression_Request:
                     current_count = validate_remaining_data(main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Data filter Selection
-                current_count = perform_match_or_filter_selection("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+                current_count = perform_match_or_filter_selection("Suppression",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Performing channel suppression
                 current_count = channel_suppression(main_request_details, filter_details, main_request_table, main_logger,
                                                     mysql_cursor)
                 # Performing ZIPs suppression
                 if filter_details['zipSuppression']:
-                    current_count = state_and_zip_suppression('ZIP_SUPPRESSION', current_count, main_request_table,
+                    current_count = state_and_zip_suppression('Zipcode Suppression', current_count, main_request_table,
                                                               filter_details['zipSuppression'], main_logger, mysql_cursor, main_request_details)
 
                 # Performing States suppression
                 if filter_details['stateSuppression']:
-                    current_count = state_and_zip_suppression('STATE_SUPPRESSION', current_count, main_request_table,
+                    current_count = state_and_zip_suppression('State Suppression', current_count, main_request_table,
                                                               filter_details['stateSuppression'], main_logger, mysql_cursor, main_request_details)
             else:
                 update_default_values('Match', main_request_table, main_logger)
