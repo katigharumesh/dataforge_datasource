@@ -1001,7 +1001,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
                                     f"if(%s<=endDate,%s,%s),status=if(date(nextScheduleDue)>endDate,'C','W') where id={id}"
                     logger.info(f"Updating nextScheduleDue, query : {nextschedulequery}")
                     mysqlcur.execute(nextschedulequery, (nextscheduledatep,nextscheduleDuep,dendDate))
-            if request_status == "C":
+            if request_status == "C" or request_status == "P":
                 update_wasInactive_status_query = f"update {schedule_table} set wasInActive=0 where {column_to_fetch}={request_id}"
             if recurrenceType is None :
                 update_schedule_status = f"update {schedule_table} set status = '{request_status}' where id={id}"

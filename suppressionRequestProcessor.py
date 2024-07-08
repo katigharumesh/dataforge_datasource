@@ -259,7 +259,7 @@ class Suppression_Request:
                 schedule_status_value = 'C'
                 main_logger.info(f"Executing: {UPDATE_SUPP_SCHEDULE_STATUS, (schedule_status_value, current_count, '', supp_request_id, run_number)}")
                 mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,(schedule_status_value, current_count, '', supp_request_id, run_number))
-            update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,'C')
+            update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,schedule_status_value)
             if sendNotificationsFor == "A":
                 send_mail("SUPP", supp_request_id, run_number, EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),

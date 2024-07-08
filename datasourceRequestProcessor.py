@@ -131,7 +131,7 @@ class Dataset:
             # Preparing request level main_datasource
             ordered_sources_loaded = [x[0] for x in sorted(self.sources_loaded, key=lambda x: x[1])]
             schedule_status_value = create_main_datasource(ordered_sources_loaded, main_request_details, main_logger)
-            update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger, 'C')
+            update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger, schedule_status_value)
             end_time = time.time()
             if sendNotificationsFor =="A":
                 send_mail("DATASET", request_id, run_number,
