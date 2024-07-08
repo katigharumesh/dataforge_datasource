@@ -69,7 +69,7 @@ class Suppression_Request:
         try:
             recipient_emails = RECEPIENT_EMAILS + notification_mails.split(',')
             os.makedirs(f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}", exist_ok=True)
-            main_logger = create_logger(f"supp_request_{str(supp_request_id)}_{str(run_number)}", log_file_path=f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}/", log_to_stdout=True)
+            main_logger = create_logger(f"supp_request_{str(supp_request_id)}_{str(run_number)}", log_file_path=f"{SUPP_LOG_PATH}/{str(supp_request_id)}/{str(run_number)}/", log_to_stdout=False)
             mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
             mysql_cursor = mysql_conn.cursor(dictionary=True)
             main_logger.info(f"Executing : {UPDATE_SUPP_SCHEDULE, ('I',supp_request_id, run_number)}")
@@ -268,7 +268,6 @@ class Suppression_Request:
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
-            main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,
                                  ('E', '0', str(e), supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)

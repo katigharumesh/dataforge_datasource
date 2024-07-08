@@ -296,7 +296,7 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
         {"Static Account level INFS Unsubs": ("INFS_LPT.infs_account_level_static_suppression_data",)}
     ),
     'listid_profileid': (
-        {"Account level Conversions": ("INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM",)}
+        {"Account level Conversions": ("INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM",)},
     )
 }
 

@@ -35,7 +35,7 @@ def load_input_source(type_of_request, source, main_request_details):
         run_number = main_request_details['runNumber']
         if input_data is not None:
             input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
-        consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{log_path}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+        consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{log_path}/{str(request_id)}/{str(run_number)}/", log_to_stdout=False)
         consumer_logger.info(f"Processing task: {str(source)}")
         consumer_logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -1619,7 +1619,7 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         os.makedirs(f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
         temp_files_path = f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
         source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
-        consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=True)
+        consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=False)
         logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysql_cursor = mysql_conn.cursor(dictionary=True)
@@ -1677,7 +1677,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
         os.makedirs(f"{request_offer_log_path}", exist_ok=True)
         offer_logger = create_logger(f"offer_{str(request_id)}_{str(run_number)}_{str(offer_id)}",
                                     log_file_path=f"{request_offer_log_path}/",
-                                    log_to_stdout=True)
+                                    log_to_stdout=False)
         offer_logger.info(f"Processing started for offerid: {offer_id}")
         offer_logger.info(f"Acquiring mysql connection")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -1952,7 +1952,7 @@ def apply_green_feed_level_suppression(source_table, result_breakdown_flag, logg
             'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
         res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
         res['filterName'] = "Green Global Suppression"
-        sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = 'Green Global Suppression' FROM (select email from GREEN_LPT.ORIGIN_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND union all select email from GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS union all select email from GREEN_LPT.PFM_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE union all select email from GREEN_LPT.GREEN_UNSUBS) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and a.LIST_ID not in (select listid from GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3))"
+        sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = 'Green Global Suppression' FROM (select email from GREEN_LPT.ORIGIN_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND union all select email from GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS union all select email from GREEN_LPT.PFM_UNIVERSE_UNSUBS union all select email from GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE union all select email from GREEN_LPT.GREEN_UNSUBS) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and a.LIST_ID not in (select listid from GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT where RULE in (2,3))"
         logger.info(f"Executing query: {sf_update_table_query}")
         sf_cursor.execute(sf_update_table_query)
         logger.info(f"Green Global Suppression done successfully...")
