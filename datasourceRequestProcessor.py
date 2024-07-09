@@ -8,7 +8,8 @@ class Dataset:
         self.sources_loaded = []
         self.input_sources_count = 0
         self.consumer_kill_condition = False
-
+        self.failed_sources_desc = ''
+        self.sources_failed_count = 0
     def load_input_sources_producer(self,sources_queue, request_id, queue_empty_condition, thread_count, main_logger):
         # mysql connection closing
         main_logger.info(f"Producer execution started: {time.ctime()} ")
@@ -44,7 +45,7 @@ class Dataset:
                         while sources_queue.empty():  # Wait for tasks to be available in the queue
                             queue_empty_condition.wait()
                         source = sources_queue.get()  # Get task from the queue
-                        main_logger.info(f"Processing source : {str(source)}")
+                        main_logger.info(f"Processing source: {str(source)}")
                     if source is None:  # Sentinel value indicating end of tasks
                         main_logger.info(f"Consumer execution ended: End of queue: {time.ctime()}")
                         break
@@ -55,11 +56,16 @@ class Dataset:
                     break
                 main_logger.info(f"Consumer exiting")
                 print("Consumer exiting")
+        except CustomError as e:
+            self.consumer_kill_condition = True
+            self.failed_sources_desc += str(e)
+            self.sources_failed_count += 1
+            raise CustomError(e)
         except Exception as e:
-            print(f"Exception occurred: {str(e)}")
-            # update status to error
-            main_logger.error(f"Exception occurred: {str(e)}")
-            consumer_kill_condition = True
+            self.consumer_kill_condition = True
+            self.failed_sources_desc += str(e)
+            self.sources_failed_count += 1
+            raise CustomError('DO4', {'error': str(e)})
 
 
     # Main function
@@ -80,13 +86,7 @@ class Dataset:
             pid_file = PID_FILE.replace('REQUEST_ID',str(request_id))
             if os.path.exists(str(pid_file)):
                 main_logger.info("Script execution is already in progress, hence skipping the execution.")
-                #send_skype_alert("Script execution is already in progress, hence skipping the execution.")
-                mysql_cursor.execute(UPDATE_SCHEDULE_STATUS,('E', '0', 'Due to PID existence', request_id, run_number))
-                update_next_schedule_due("SUPPRESSION_DATASET",request_id, run_number, main_logger)
-                send_mail("DATASET", request_id,run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name=str(main_request_details['name']),request_id=(request_id)),
-                          MAIL_BODY.format(type_of_request="Dataset",request_id= str(request_id),run_number= str(run_number),schedule_time= str(schedule_time),
-                                           status= 'E<br>Error Reason: Due to processing of another instance',table=''),recipient_emails=recipient_mails)
-                return
+                raise CustomError('DO0', {'pidfile': str(pid_file)})
             Path(pid_file).touch()
             start_time = time.time()
             main_logger.info("Script Execution Started" + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
@@ -112,22 +112,9 @@ class Dataset:
                 consumer_thread.join()
             main_logger.info("Sources loaded: " + str(self.sources_loaded))
             if len(self.sources_loaded) != self.input_sources_count:
-                main_logger.info(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} "
-                                 f"sources. Considering the datasource preparation request as failed.")
-                print(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources."
-                      f" Considering the datasource preparation request as failed.")
-                #mysql_cursor.execute(DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
-                mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.', request_id, run_number))
-                update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
-                os.remove(pid_file)
-                send_mail("DATASET", request_id, run_number,
-                          ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset", request_name=str(main_request_details['name']),request_id= str(request_id)),
-                          MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),
-                                           run_number=str(run_number), schedule_time=str(schedule_time),
-                                           status=f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.', table=''),recipient_emails=recipient_mails)
-                return
+                main_logger.info(f"Out of {self.input_sources_count} input sources, {self.sources_failed_count} input sources are unable to process.")
+                raise CustomError('DO1',{'n': str(self.input_sources_count), 'm': self.sources_failed_count, 'error': self.failed_sources_desc})
             main_logger.info("All sources are successfully processed.")
-            print("All sources are successfully processed.")
             # Preparing request level main_datasource
             ordered_sources_loaded = [x[0] for x in sorted(self.sources_loaded, key=lambda x: x[1])]
             schedule_status_value = create_main_datasource(ordered_sources_loaded, main_request_details, main_logger)
@@ -140,11 +127,15 @@ class Dataset:
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
-            main_logger.info(f"Exception occurred in main: Please look into this. {str(e)}" + str(traceback.format_exc()))
+            main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
+            error_obj = CustomError('DO23',{'error': str(e)},False)
+            error_desc = error_obj.message
+            mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', error_desc, request_id, run_number))
+            update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
             send_mail("DATASET", request_id, run_number,
                       ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
                       MAIL_BODY.format("Dataset", str(request_id), str(run_number), str(schedule_time),
-                                       f'E <br>Error Reason: {str(e)}'),recipient_emails=recipient_mails)
+                                       f'E <br>Error Reason: {error_desc}'),recipient_emails=recipient_mails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():

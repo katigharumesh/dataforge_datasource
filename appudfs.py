@@ -33,6 +33,7 @@ def load_input_source(type_of_request, source, main_request_details):
         source_sub_type = source['sourceSubType']
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
+        distinct_filter = 'distinct'
         if input_data is not None:
             input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
         consumer_logger = create_logger(base_logger_name=f"source_{str(mapping_id)}_{str(request_id)}_{str(run_number)}", log_file_path=f"{log_path}/{str(request_id)}/{str(run_number)}/", log_to_stdout=False)
@@ -60,8 +61,8 @@ def load_input_source(type_of_request, source, main_request_details):
 
         elif source_type == "D":
             if sf_account != SNOWFLAKE_CONFIGS['account']:
-                consumer_logger.info("Snowflake account mismatch. Pending implementation ...")
-                raise Exception("Snowflake account mismatch. Pending implementation ...")
+                consumer_logger.info("Snowflake account mismatch. Pending implementation.")
+                raise Exception('Snowflake account mismatch. Pending implementation.')
             if source_sub_type in ('R', 'D', 'P', 'M', 'J'):
                 if sf_table is not None and sf_table!='NULL':
                     sf_data_source = f"{sf_database}.{sf_schema}.{sf_table}"
@@ -89,9 +90,13 @@ def load_input_source(type_of_request, source, main_request_details):
                             filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
                     touch_filter = False
+
                     if 'touchCount' in filter and source_sub_type in ('R', 'D'):
                         touch_filter = True
                         touch_count = filter['touchCount']
+                        if int(touch_count) > 1:
+                            distinct_filter = ''
+
                         if main_request_details['feedType'] == 'F':
                             grouping_fields = 'list_id,email_id'
                             join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
@@ -102,7 +107,7 @@ def load_input_source(type_of_request, source, main_request_details):
                         where_conditions.append(f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
-                                                 f"as select distinct {main_request_details['FilterMatchFields']} " \
+                                                 f"as select {distinct_filter} {main_request_details['FilterMatchFields']} " \
                                                  f"from {sf_data_source} where {' and '.join(where_conditions)} "
                 consumer_logger.info("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
@@ -133,11 +138,12 @@ def load_input_source(type_of_request, source, main_request_details):
         else:
             consumer_logger.info("Unknown source_type selected")
             raise Exception("Unknown source_type selected")
-
+    except CustomError as e:
+        consumer_logger.error(f"Exception occurred for sourceid:{mapping_id} Error: {str(e)}")
+        raise CustomError(f"Sourceid:{mapping_id} Error: {str(e)}")
     except Exception as e:
-        print(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        consumer_logger.error(f"Exception occurred: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred: Please look into this. {str(e)}"+ str(traceback.format_exc()))
+        consumer_logger.error(f"Exception occurred for sourceid:{mapping_id} Error: {str(e)}" + str(traceback.format_exc()))
+        raise CustomError('DO4',{'error': f'Sourceid:{mapping_id} Error: {str(e)}. '})
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -165,8 +171,8 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         elif data_processing_type == 'M':
             sf_data_source = f' union select {filter_match_fields} from '.join(sources_loaded)
         else:
-            logger.info(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
-            raise Exception(f"Unknown data_processing_type - {data_processing_type} . Raising Exception ... ")
+            logger.info(f"Unknown data_processing_type - {data_processing_type} . ")
+            raise CustomError("DO21","Unknown data_processing_type - {data_processing_type} . ")
         logger.info("Acquiring Snowflake Connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -205,8 +211,8 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, (schedule_status_value, record_count, '', data_source_id, run_number))
         return schedule_status_value
     except Exception as e:
-        logger.error(f"Exception occurred while creating main_datasource. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while creating main_datasource. {str(e)} "+ str(traceback.format_exc()))
+        logger.error(f"Exception occurred while creating main_datasource. {str(e)}" + str(traceback.format_exc()))
+        raise CustomError('DO2',{'error': str(e)})
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -453,7 +459,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             source_obj = ProcessS3Files(username, password)
         else:
             consumer_logger.info("Wrong method called.. ")
-            raise Exception("Wrong method called. This method works only for SFTP/FTP/NFS requests only...")
+            raise Exception("Wrong method called. This method works only for SFTP/FTP/NFS requests only.")
 
         isFile = False if input_data_dict["filePath"].endswith("/") else True
         isDir = True if input_data_dict["filePath"].endswith("/") else False
@@ -476,17 +482,11 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
 
         last_iteration_files_details = []
         if run_number != 1:
-            try:
-                mysql_cursor.execute(last_successful_run_number_query, (str(request_id),))
-                last_successful_run_number = int(mysql_cursor.fetchone()['runNumber'])
-                mysql_cursor.execute(fetch_last_iteration_file_details_query, (str(mapping_id), str(last_successful_run_number)))
-                last_iteration_files_details = mysql_cursor.fetchall()
-                consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
-            except Exception as e :
-                consumer_logger.error("Exception occurred while fetching last successful iteration details... Seems like no run got completed now...")
-            # [filename,size,modified_time,count]
-        table_name = source_table
-        consumer_logger.info(f"Table name for this DataSource is: {table_name}")
+            mysql_cursor.execute(last_successful_run_number_query, (str(request_id),))
+            last_successful_run_number = int(mysql_cursor.fetchone().get('runNumber',-1))
+            mysql_cursor.execute(fetch_last_iteration_file_details_query, (str(mapping_id), str(last_successful_run_number)))
+            last_iteration_files_details = mysql_cursor.fetchall()
+            consumer_logger.info(f"Fetched last iteration_details: {last_iteration_files_details}")
         consumer_logger.info(f"Establishing Snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
@@ -494,12 +494,12 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
         if run_number == 1 or last_successful_run_number == -1  or last_iteration_files_details == []:
             field_delimiter = input_data_dict['delimiter']
             header_list = input_data_dict['headerValue'].split(str(field_delimiter))
-            sf_create_table_query = f"create or replace transient table  {table_name}  ( "
+            sf_create_table_query = f"create or replace transient table  {source_table}  ( "
             sf_create_table_query += " varchar ,".join(i for i in header_list)
             sf_create_table_query += f" varchar , do_inputSource varchar, do_inputSourceMappingId varchar default '{mapping_id}' )"
         else:
-            last_run_table_name = table_name[:table_name.rindex('_')+1]+str(last_successful_run_number)
-            sf_create_table_query = f"create or replace transient table  {table_name}  clone {last_run_table_name} "
+            last_run_table_name = source_table[:source_table.rindex('_')+1]+str(last_successful_run_number)
+            sf_create_table_query = f"create or replace transient table  {source_table}  clone {last_run_table_name} "
         consumer_logger.info(f"Executing query: {sf_create_table_query}")
         sf_cursor.execute(sf_create_table_query)
 
@@ -510,7 +510,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             if len(files_list) >= 1:
                 consumer_logger.info("There are one or more files with comma separated...")
                 for file in files_list:
-                    file_details_dict = process_single_file(mapping_id, temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, table_name, last_iteration_files_details, source_sub_type, username, password)
+                    file_details_dict = process_single_file(mapping_id, temp_files_path,  run_number , source_obj, file,consumer_logger,input_data_dict, source_table, last_iteration_files_details, source_sub_type, username, password)
                     # add logic to insert the file details into table
                     fileName = file_details_dict["filename"]
                     count = file_details_dict["count"]
@@ -520,13 +520,13 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                     error_desc = file_details_dict['error_msg']
                     if type_of_request == "Match" or type_of_request == "Suppression":
                         if file_status == 'E':
-                            raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                            raise Exception(f"The file {fileName} is errored due to reason: {error_desc} ")
                         continue
                     mysql_cursor.execute(insert_file_details, (schedule_id, run_number, mapping_id, count, fileName, 'DATA_OPS SERVICE', 'DATA_OPS SERVICE', size, last_modified_time, file_status , error_desc))
                     file_details_list.append(file_details_dict)
                     if len(files_list) == 1:
                         if file_status == 'E':
-                            raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                            raise CustomError(f"The file {fileName} is errored due to reason: {error_desc} ")
             else:
                 consumer_logger.info("There are no files specified.. Kindly check the request..")
                 raise Exception("There are no files specified.. Kindly check the request..")
@@ -541,7 +541,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             if len(to_delete) != 0:
                 to_delete_mysql_formatted = ','.join([f"'{item}'" for item in to_delete])
                 consumer_logger.info(f"Older files to be deleted: {to_delete_mysql_formatted}")
-                sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY,(table_name, to_delete_mysql_formatted))
+                sf_cursor.execute(SF_DELETE_OLD_DETAILS_QUERY,(source_table, to_delete_mysql_formatted))
             else:
                 consumer_logger.info("No older files to delete.")
 
@@ -549,7 +549,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             consumer_logger.info("First time/existing files processing..")
             for file in files_list:
                 fully_qualified_file = input_data_dict["filePath"] + file
-                file_details_dict = process_single_file(mapping_id, temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, table_name,
+                file_details_dict = process_single_file(mapping_id, temp_files_path, run_number, source_obj, fully_qualified_file, consumer_logger, input_data_dict, source_table,
                                                         last_iteration_files_details, source_sub_type, username, password)
                 fileName = file_details_dict["filename"]
                 count = file_details_dict["count"]
@@ -559,7 +559,7 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
                 error_desc = file_details_dict['error_msg']
                 if type_of_request == "Match" or type_of_request == "Suppression":
                     if file_status == 'E':
-                        raise Exception(f"Please check on this file, The file {fileName} is errored due to reason: {error_desc} ")
+                        raise Exception(f"The file {fileName} is errored due to reason: {error_desc} ")
                     continue
                 mysql_cursor.execute(insert_file_details, (
                     schedule_id, run_number, mapping_id, count, fileName,
@@ -620,10 +620,12 @@ def process_file_type_request(type_of_request,request_id, source_table, run_numb
             sf_query = f"alter table {dedup_source_table} rename to {source_table}"
             consumer_logger.info(f"Executing query: {sf_query}")
             sf_cursor.execute(sf_query)
-        return table_name
+        return source_table
+    except CustomError as e:
+        consumer_logger.info(f"Exception occurred: {str(e)} {str(traceback.format_exc())}")
+        raise CustomError(str(e))
     except Exception as e:
-        print(f"Except occurred. Please look into it. {str(e)} {str(traceback.format_exc())}")
-        consumer_logger.info(f"Except occurred. Please look into it. {str(e)} {str(traceback.format_exc())}")
+        consumer_logger.info(f"Exception occurred: {str(e)} {str(traceback.format_exc())}")
         raise Exception(str(e))
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
@@ -754,8 +756,8 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             file_details_dict['error_msg'] = ''
         return file_details_dict
     except Exception as e:
-        consumer_logger.error(f"Exception occurred. PLease look into this. {str(e)}")
-        raise Exception(f"Exception occurred. PLease look into this. {str(e)}")
+        consumer_logger.error(f"Exception occurred while processing file {fully_qualified_file}. {str(e)}" + + str(traceback.format_exc()))
+        raise Exception(e)
 
 def update_next_schedule_due(type_of_request, request_id, run_number, logger, request_status='E'):
     try:
@@ -1029,27 +1031,30 @@ def data_source_input(type_of_request, datasource_id, mysql_cursor, logger):
         logger.info(f" executing query: {status_query, (datasource_id,)}")
         mysql_cursor.execute(status_query, (datasource_id,))
         result1 = mysql_cursor.fetchone()
+        if not result1['isActive']:
+            raise CustomError('DO5', {'Filter/Dataset': 'Dataset', 'id': str(datasource_id)})
         was_inactive_query = f"select wasInActive from {SCHEDULE_TABLE} where dataSourceId = %s order by id desc limit 1"
         logger.info(f" executing query: {was_inactive_query, (datasource_id,)}")
         mysql_cursor.execute(was_inactive_query, (datasource_id,))
         result2 = mysql_cursor.fetchone()
-        if not result1['isActive'] or result2['wasInActive']:
-            raise Exception(f"Given Dataset_id :: {datasource_id} is not actively working. So making this request error.")
+        if result2['wasInActive']:
+            raise CustomError('DO6', {'id': str(datasource_id)})
         logger.info(f" executing query: {SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,)}")
         mysql_cursor.execute(SUPP_DATASET_MAX_RUN_NUMBER_QUERY, (datasource_id,))
         result = mysql_cursor.fetchone()
         max_runNumber = result['runNumber']
         status = result['status']
-
-        if status == "C" or status =="P":
+        if status == "C" or status == "P":
             table_name = f"{MAIN_DATASET_TABLE_PREFIX}{str(datasource_id)}_{str(max_runNumber)}"
             return table_name
         else:
-            raise Exception(f"Given  Dataset_id :: {datasource_id} is not actively working. So making this request error.")
-
+            raise CustomError('DO7', {'id': str(datasource_id)})
+    except CustomError as e:
+        logger.error("Exception occurred: {str(e)}")
+        raise CustomError(e)
     except Exception as e:
-        logger.error("Exception occurred. Please look into this .... {str(e)}" + str(traceback.format_exc()))
-        raise Exception(str(e) + str(traceback.format_exc()))
+        logger.error("Exception occurred: {str(e)}" + str(traceback.format_exc()))
+        raise CustomError('DO8',{'error': str(e)})
 
 def create_main_input_source(sources_loaded, main_request_details, filter_details, logger):
     try:
@@ -1095,7 +1100,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
         gm_configured_isps = mysql_cursor.fetchone()['isps']
-        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'other' where isp not in ({gm_configured_isps})")
+        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'others' where isp not in ({gm_configured_isps})")
 
         sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
         counts_after_filter = sf_cursor.fetchone()[0]
@@ -1211,7 +1216,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         return counts_after_filter, main_input_source_table
     except Exception as e:
         logger.error(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while creating main input source table. {str(e)} " + str(traceback.format_exc()))
+        raise CustomError('DO2',{'error': str(e)})
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -1235,7 +1240,8 @@ def isps_filtration(current_count, main_request_table, isps, logger, mysql_curso
                                                                       ,'ISP Filter',counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
-        raise CustomException('DO7',e)
+        logger.info(f"Exception Occurred: {str(e)}" + str(traceback.format_exc()))
+        raise CustomError('DO9', {'error': str(e)})
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1266,8 +1272,7 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         return counts_after_filter
     except Exception as e:
         logger.error(f"Exception occurred while performing profile non-match filtration. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(
-            f"Exception occurred while performing profile non-match filtration. {str(e)} " + str(traceback.format_exc()))
+        raise CustomError('D1O', {'error': str(e)})
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -1331,11 +1336,13 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
             is_first_match_filter = True
+            error_code = 'DO11'
         if type_of_request == "Suppress":
             channel_file_type = 'S'
             filter_type = 'Channel_File_Suppression'
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
+            error_code = 'DO12'
         main_logger.info(f"Processing channel level adhoc {type_of_request} files.")
         main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
         channel_files_db_conn = mysql.connector.connect(**CHANNEL_OFFER_FILES_DB_CONFIG)
@@ -1397,8 +1404,7 @@ def channel_adhoc_files_match_and_suppress(type_of_request,filter_details, main_
     except Exception as e:
         main_logger.error(f"Exception occurred while processing channel level {type_of_request} adhoc files. Please "
                           f"look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while processing channel level {type_of_request} adhoc files. Please "
-                          f"look into this. {str(e)}" + str(traceback.format_exc()))
+        raise CustomError(error_code, {'error': str(e)})
     finally:
         if 'connection' in locals() and channel_files_db_conn.is_connected():
             channel_files_db_cursor.close()
@@ -1548,9 +1554,11 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         if type_of_request == "Match":
             column_to_update = 'do_matchStatus'
             default_value = 'NON_MATCH'
+            error_code = 'DO13'
         if type_of_request == "Suppression":
             column_to_update = 'do_suppressionStatus'
             default_value = 'CLEAN'
+            error_code = 'DO14'
         logger.info(f"perform_filter_or_match method for {type_of_request} invoked..")
         logger.info("Acquiring snowflake connection")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -1602,7 +1610,7 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
         return counts_after_filter
     except Exception as e:
         logger.error(f"Exception occurred at perform_filter_or_match method for {type_of_request}: Please look into this. {str(e)}" + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred at perform_filter_or_match method for {type_of_request}: Please look into this. {str(e)}" + str(traceback.format_exc()))
+        raise CustomError(error_code, {'error': str(e)})
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -2159,8 +2167,10 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
         sf_cursor = sf_conn.cursor()
         if filter_type == "Zipcode Suppression":
             filter = "ZIP"
+            error_code = 'DO17'
         elif filter_type == "State Suppression":
             filter = "STATE"
+            error_code = 'DO18'
         filter_values = str(filter_values).replace(",", "','")
         sf_update_query = f"update {main_request_table} a set a.do_suppressionStatus = '{filter_type}' from " \
                           f"{POSTAL_TABLE} b where a.EMAIL_MD5 = b.md5hash and b.{filter} in ('{filter_values}') and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
@@ -2172,8 +2182,7 @@ def state_and_zip_suppression(filter_type, current_count, main_request_table, fi
                                                                       ,filter_type,counts_before_filter,counts_after_filter,0,0))
         return counts_after_filter
     except Exception as e:
-        print(f"Exception occurred while performing {filter_type}. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while performing {filter_type}. {str(e)} "+ str(traceback.format_exc()))
+        raise CustomError(error_code, {'error': str(e)})
     finally:
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
@@ -2563,7 +2572,7 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         logger.error(f"Making purdue status as Error in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
                      f", run_number: {result['runNumber']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number)}  ")
         mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number))
-        raise Exception(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
+        raise CustomError('DO19',{'error': str(e)})
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -2578,9 +2587,9 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
-        stats_pulling_query = f'''select 'NA' as "OfferId",{grouping_columns.replace(
-            'do_inputsource','do_inputsource as "Input Source"').replace('do_matchstatus','do_matchstatus as "Matched Source"')}, count(1) 
-            as COUNT from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns}'''
+        stats_pulling_query = f'''select 'NA' as "OfferId",{grouping_columns.upper().replace(
+            'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace('LIST_ID','DO_FEEDNAME as "Feed Name"')}, count(1) 
+            as Count from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns.upper().replace('LIST_ID','DO_FEEDNAME')}'''
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
@@ -2596,10 +2605,10 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             if fetched_offers['success_offers'] is not None:
                 offerids_list = str(fetched_offers['success_offers']).split(',')
                 for offerid in offerids_list:
-                    offer_stats_pulling_query = f'''select {offerid} as "OfferId",{grouping_columns.replace(
-                        'do_inputsource', 'do_inputsource as "Input Source"').replace('do_matchstatus', 'do_matchstatus as "Matched Source"')}
-                        , count(1) as COUNT from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and 
-                        do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns}'''
+                    offer_stats_pulling_query = f'''select {offerid} as "OfferId",{grouping_columns.upper().replace(
+                        'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace('LIST_ID','DO_FEEDNAME as "Feed Name"')}
+                        , count(1) as Count from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and 
+                        do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns.upper().replace('LIST_ID','DO_FEEDNAME')}'''
                     logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
                     sf_cursor.execute(offer_stats_pulling_query)
                     stats += sf_cursor.fetchall()
@@ -2609,7 +2618,7 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
             logger.info(f"Successfully inserted stats in {SUPPRESSION_REQUEST_DATA_STATS_TABLE} mysql table")
     except Exception as e:
         logger.error(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
-        raise Exception(f"Exception occurred while populating stats table. {str(e)} " + str(traceback.format_exc()))
+        raise CustomError('DO24',{'error': str(e)})
     finally:
         if 'connection' in locals() and mysql_conn.is_connected():
             mysql_cursor.close()
@@ -2767,9 +2776,33 @@ def add_table(main_request_details, run_number):
     return table_msg
 
 
-class CustomException(Exception):
-    def __int__(self,code,error):
-        error_desc = ERROR_CODES[self.code]
-        raise Exception(error_desc,error)
+class CustomError(Exception):
+    def __init__(self, error_code, args1=None, raise_exception=True):
+        self.error_code = str(error_code)
+        self.args1 = args1 or {}
+
+        if self.error_code not in ERROR_CODES:
+            self.message = self.error_code
+        elif self.error_code == 'DO0':
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
+                pidfile=self.args1.get('pidfile', ''))
+        elif self.error_code == 'DO1':
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(n=self.args1['n'],
+                                                                                        m=self.args1['m'],
+                                                                                        error=self.args1['error'])
+        elif self.error_code == 'DO3':
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
+                operation=self.args1['operation'], error=self.args1['error'])
+        elif self.error_code in ['DO5', 'DO6', 'DO7']:
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(**self.args1)
+        elif self.error_code == 'DO23':
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
+                request_type=self.args1['request_type'], error=self.args1['error'])
+        else:
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
+                error=self.args1.get('error', ''))
+        if raise_exception:
+            super().__init__(self.message)
+
 
 

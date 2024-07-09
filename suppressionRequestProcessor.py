@@ -8,6 +8,8 @@ class Suppression_Request:
         self.counts_before_filter = 0
         self.counts_after_filter = 0
         self.consumer_kill_condition = False
+        self.failed_sources_desc = ''
+        self.sources_failed_count = 0
 
     def load_input_sources_producer(self, sources_queue, supp_request_id, queue_empty_condition, thread_count, main_logger):
         # mysql connection closing
@@ -24,7 +26,6 @@ class Suppression_Request:
         for source in data_sources:
             sources_queue.put(source)
         main_logger.info(f"Producer finished producing tasks")
-        print("Producer finished producing tasks")
         with queue_empty_condition:
             for _ in range(thread_count):  # Put sentinel value for each consumer
                 sources_queue.put(None)  # Put sentinel value in the queue
@@ -53,16 +54,16 @@ class Suppression_Request:
                 else:
                     break
                 main_logger.info(f"Consumer exiting")
-                print("Consumer exiting")
-        except Exception as e:
-            print(f"Exception occurred: {str(e)}")
-            error_desc = str(e) + str(traceback.format_exc())
-            # update status to error
-            main_logger.error(f"Exception occurred: {str(e)}")
+        except CustomError as e:
             self.consumer_kill_condition = True
-        finally:
-            if self.consumer_kill_condition:
-                raise Exception(error_desc)
+            self.failed_sources_desc += str(e)
+            self.sources_failed_count += 1
+            raise CustomError(e)
+        except Exception as e:
+            self.consumer_kill_condition = True
+            self.failed_sources_desc += str(e)
+            self.sources_failed_count += 1
+            raise CustomError('DO4',{'error': str(e)})
 
     # Main function
     def suppression_request_processor(self, supp_request_id, run_number, schedule_time=None, notification_mails="",sendNotificationsFor="E"):
@@ -82,14 +83,7 @@ class Suppression_Request:
             main_logger.info(f"Fetched supp request details are: {main_request_details}")
             pid_file = SUPP_PID_FILE.replace('REQUEST_ID', str(supp_request_id))
             if os.path.exists(str(pid_file)):
-                main_logger.info("Script execution is already in progress, hence skipping the execution.")
-                send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name= str(main_request_details['name']),request_id= str(supp_request_id)),
-                          MAIL_BODY.format(type_of_request="Suppression Request", request_id= str(supp_request_id), run_number= str(run_number), schedule_time= str(schedule_time),
-                                           status= 'E <br>Error Reason: Due to processing of another instance',table=''),
-                          recipient_emails=recipient_emails, message_type='html')
-                mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', 'Due to PID existence', supp_request_id, run_number))
-                update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-                return
+                raise CustomError('DO0',{'pidfile': str(pid_file)})
             Path(pid_file).touch()
             start_time = time.time()
             main_logger.info("Script Execution Started " + time.strftime("%H:%M:%S") + f" Epoch time: {start_time}")
@@ -107,8 +101,7 @@ class Suppression_Request:
 
             main_logger.info(f"Filter details: {str(filter_details)}")
             if not filter_details['isActive']:
-                raise Exception(f"Selected Filter:: {filter_details['name']} is Inactive Please check.The request is set to Error...")
-
+                raise CustomError('DO5',{'Filter/Dataset': 'Filter', 'id': str(main_request_details['filterId'])})
 
             sources_queue = queue.Queue()
             queue_empty_condition = threading.Condition()
@@ -133,18 +126,8 @@ class Suppression_Request:
             # add the logic to add the data source tables to sources_loaded.
             main_logger.info("sources loaded: " + str(self.sources_loaded))
             if len(self.sources_loaded) != self.input_sources_count:
-                main_logger.info(f"Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} ")
-                mysql_cursor.execute(SUPP_DELETE_FILE_DETAILS, (main_request_details['ScheduleId'], main_request_details['runNumber']))
-                mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS, ('E', '0', f'Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'
-                                                              , supp_request_id, run_number))
-                update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
-                send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id =str(supp_request_id)),
-                          MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),
-                                           schedule_time=(schedule_time), table ='',
-                                           status= f'E<br>Error Reason: Only {len(self.sources_loaded)} sources are successfully processed out of {self.input_sources_count} sources.'),
-                          recipient_emails=recipient_emails)
-                os.remove(pid_file)
-                return
+                main_logger.info(f"Out of {self.input_sources_count} input sources, {self.sources_failed_count} input sources are unable to process. ")
+                raise CustomError('DO1',{'n': str(self.input_sources_count), 'm': self.sources_failed_count, 'error': self.failed_sources_desc})
             main_logger.info("All sources are successfully processed.")
 
             # Preparing request level main input source
@@ -268,6 +251,7 @@ class Suppression_Request:
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
+            main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,
                                  ('E', '0', str(e), supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
