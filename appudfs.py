@@ -2074,6 +2074,20 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_key} suppression done successfully...")
+        # BLUE_CLIENT_DATA_SUPPRESSION
+        res = {}
+        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
+            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
+        res['filterName'] = 'INFS Optizmo Unsubs'
+        res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
+        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'INFS Optizmo Unsubs' FROM INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.list_id in (select listid from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        logger.info(f"Executing query:  {sf_update_table_query}")
+        sf_cursor.execute(sf_update_table_query)
+        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS Optizmo Unsubs'  from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        logger.info(f" Executing query : {sf_update_temp_table_query}")
+        sf_cursor.execute(sf_update_temp_table_query)
+        res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
+        result.append(res)
         for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
             supp_key = list(supp_dict.keys())[0]
             supp_tables = supp_dict[supp_key]
@@ -2095,21 +2109,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
             result.append(res)
             logger.info(f"{supp_key} suppression done successfully...")
-        logger.info("Applying must and should suppressions...")
-        # BLUE_CLIENT_DATA_SUPPRESSION
-        res = {}
-        res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-            'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-        res['filterName'] = 'INFS Optizmo Unsubs'
-        res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-        sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = 'INFS Optizmo Unsubs' FROM INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.list_id in (select listid from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f"Executing query:  {sf_update_table_query}")
-        sf_cursor.execute(sf_update_table_query)
-        sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = 'INFS Optizmo Unsubs'  from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION b where a.EMAIL_MD5=b.md5hash and a.account_name in (select account_name from INFS_LPT.BLUE_CLIENT_DATA_SUPPRESSION_LISTIDS c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) AND  a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-        logger.info(f" Executing query : {sf_update_temp_table_query}")
-        sf_cursor.execute(sf_update_temp_table_query)
-        res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
-        result.append(res)
+
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
         if not result_breakdown_flag:
