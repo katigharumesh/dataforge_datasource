@@ -1179,8 +1179,8 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                 logger.info(f"Executing: {sf_query}")
                 sf_cursor.execute(sf_query)
             else:
-                logger.info(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' . Raising Exception ... ")
-                raise Exception(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' . Raising Exception ... ")
+                logger.info(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' .  ")
+                raise Exception(f"Unknown suppressionMethod : '{filter_details['suppressionMethod']}' . ")
             current_table = feed_prioritize_temp_table
         sf_query = f"create or replace transient table {dedup_temp_table} like {temp_input_source_table}"
         logger.info(f"Executing: {sf_query}")
@@ -1198,8 +1198,9 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                           f"'CLEAN', do_matchStatus varchar default 'NON_MATCH', "
                           f"do_feedname varchar default 'Third_Party', do_originalInputSource varchar")
         if channel_name == 'INFS':
-            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.ACCOUNT_NAME,'_',B.LISTID) "
-                              f"FROM (select ACCOUNT_NAME,cast(LISTID as varchar) as LISTID from "
+            sf_cursor.execute(f"alter table {main_input_source_table} add column if not exists account_name varchar")
+            sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.ACCOUNT_NAME,'_',B.LISTID),"
+                              f" account_name = B.ACCOUNT_NAME FROM (select ACCOUNT_NAME,cast(LISTID as varchar) as LISTID from "
                               f"{OTEAM_FP_LISTIDS_SF_TABLE}) B WHERE A.LIST_ID=B.LISTID")
         else:
             sf_cursor.execute(f"UPDATE {main_input_source_table} A SET do_feedname = CONCAT(B.CLIENT_NAME,'_',B.LISTID) "

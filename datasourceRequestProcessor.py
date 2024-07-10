@@ -128,8 +128,7 @@ class Dataset:
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
-            error_obj = CustomError('DO23',{'error': str(e)},False)
-            error_desc = error_obj.message
+            error_desc = f"DO23: Unknown Exception occurred while processing the Dataset. Error: {str(e)}"
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', error_desc, request_id, run_number))
             update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
             send_mail("DATASET", request_id, run_number,

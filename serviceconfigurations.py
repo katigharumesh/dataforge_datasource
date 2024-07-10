@@ -136,7 +136,7 @@ FROM_EMAIL = "noreply-notifications@zetaglobal.com"
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where DO_INPUTSOURCE in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
-LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status in ('C','P')"
+LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select  if(max(runNumber) is NULL,-1,max(runNumber)) as runNumber from {SCHEDULE_STATUS_TABLE} where dataSourceId=%s and status in ('C','P')"
 
 '''' SUPPRESSION REQUEST CONFIGS '''
 
@@ -163,7 +163,7 @@ SUPPRESSION_REQUEST_FILES_INPUT_TABLE = "SUPPRESSION_REQUEST_FILES_INPUT"
 
 SUPP_FILE_DETAILS_TABLE = 'SUPPRESSION_REQUEST_FILE_DETAILS'
 
-SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select max(runNumber) as runNumber from {SUPP_SCHEDULE_STATUS_TABLE} where requestId=%s and status in ('C','P')"
+SUPP_LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select if(max(runNumber) is NULL,-1,max(runNumber)) as runNumber from {SUPP_SCHEDULE_STATUS_TABLE} where requestId=%s and status in ('C','P')"
 
 SUPP_FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {SUPP_FILE_DETAILS_TABLE} where suppressionRequestMappingId=%s and runNumber=%s and file_status='C' "
 
