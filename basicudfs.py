@@ -43,12 +43,14 @@ def create_logger(base_logger_name: object, log_file_path: object = LOG_PATH, lo
     logger.addHandler(file_handler)
 
     # Check if log_to_stdout flag is True
+
+
     if log_to_stdout:
         # Create a StreamHandler to log to stdout
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
-
+    logger.propagate = False
     return logger
 
 

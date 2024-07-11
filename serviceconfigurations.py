@@ -131,8 +131,6 @@ MAIN_DATASET_TABLE_PREFIX = 'DO_DATASET_'
 # , 'equals': '=', 'not equals': '!=', 'like': 'like', 'not like': 'not like', 'exists in': 'in',
 #                    'not exists in': 'not in', 'predefined daterange': '>='}
 
-FROM_EMAIL = "noreply-notifications@zetaglobal.com"
-#RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 
 SF_DELETE_OLD_DETAILS_QUERY = "delete from %s where DO_INPUTSOURCE in (%s)"
 FETCH_LAST_ITERATION_FILE_DETAILS_QUERY = f"select filename,last_modified_time,size,count,file_status as status,error_desc as error_msg from {FILE_DETAILS_TABLE} where dataSourceMappingId=%s and runNumber=%s and file_status='C' "  # get last iteration files data
@@ -316,10 +314,12 @@ APPTNESS_SUPP_CODES = {
 }
 
 # email notification configurations
+FROM_EMAIL = "noreply@alerts.zetaglobal.net"
+#RECEPIENT_EMAILS = ["glenka@zetaglobal.com", "ukatighar@zetaglobal.com", "nuggina@zetaglobal.com"]
 SUPP_MAIL_HTML_FILE = SUPP_FILE_PATH+"/mail_{}_{}.ftl"
 
 RECEPIENT_EMAILS = []
-EMAIL_SUBJECT = "Dataops {type_of_request} {request_name} {request_id}"
+EMAIL_SUBJECT = "[{request_id}] DataOps {type_of_request}: {request_name}"
 ERROR_EMAIL_SUBJECT = "Error: " + EMAIL_SUBJECT
 MAIL_BODY = '''
 <!DOCTYPE html>
@@ -339,9 +339,10 @@ MAIL_BODY = '''
 </head>
 <body>
 <p>Hi Team,<br>
-This is a system generated mail, please do not reply.<br>
-Below are the request details.</p>
-<p>Request Type: {type_of_request}<br>
+This is a system generated notification, please do not reply.<br>
+Below are the request process details.</p>
+<p>Channel: {channel}<br>
+Request Type: {type_of_request}<br>
 Request Id: {request_id}<br>
 Run Number: {run_number}<br>
 Schedule Time: {schedule_time} UTC <br>

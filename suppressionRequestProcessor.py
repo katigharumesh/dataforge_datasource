@@ -245,7 +245,7 @@ class Suppression_Request:
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger,schedule_status_value)
             if sendNotificationsFor == "A":
                 send_mail("SUPP", supp_request_id, run_number, EMAIL_SUBJECT.format(type_of_request="Suppression Request", request_name=str(main_request_details['name']), request_id= str(supp_request_id)),
-                      MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
+                      MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
                                        status =schedule_status_value, table= add_table(main_request_details,run_number)), recipient_emails=recipient_emails)
             end_time = time.time()
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
@@ -256,7 +256,7 @@ class Suppression_Request:
                                  ('E', '0', str(e), supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
             send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
-                      MAIL_BODY.format(type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
+                      MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
                                        status= f"E <br>Error Reason: {str(e)}", table=''),recipient_emails=recipient_emails)
             os.remove(pid_file)
         finally:

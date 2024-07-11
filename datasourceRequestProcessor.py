@@ -73,7 +73,7 @@ class Dataset:
         try:
             recipient_mails = RECEPIENT_EMAILS + notification_mails.split(',')
             os.makedirs(f"{LOG_PATH}/{str(request_id)}/{str(run_number)}", exist_ok=True)
-            main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=True)
+            main_logger = create_logger(f"request_{str(request_id)}_{str(run_number)}", log_file_path=f"{LOG_PATH}/{str(request_id)}/{str(run_number)}/", log_to_stdout=False)
             mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
             mysql_cursor = mysql_conn.cursor(dictionary=True)
             main_logger.info(f"Executing : {MAKE_SCHEDULE_IN_PROGRESS, (request_id, run_number)}")
@@ -123,7 +123,7 @@ class Dataset:
             if sendNotificationsFor =="A":
                 send_mail("DATASET", request_id, run_number,
                       EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']),request_id= str(request_id)),
-                      MAIL_BODY.format(type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status=schedule_status_value,table=''),recipient_emails=recipient_mails)
+                      MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request="Dataset", request_id=str(request_id),run_number=str(run_number), schedule_time=str(schedule_time),status=schedule_status_value,table=''),recipient_emails=recipient_mails)
             main_logger.info(f"Script execution ended: {time.strftime('%H:%M:%S')} epoch time: {end_time}")
             os.remove(pid_file)
         except Exception as e:
@@ -133,8 +133,8 @@ class Dataset:
             update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
             send_mail("DATASET", request_id, run_number,
                       ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
-                      MAIL_BODY.format("Dataset", str(request_id), str(run_number), str(schedule_time),
-                                       f'E <br>Error Reason: {error_desc}'),recipient_emails=recipient_mails)
+                      MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request="Dataset",request_id=str(request_id),run_number= str(run_number), schedule_time= str(schedule_time),
+                                       status=f'E <br>Error Reason: {error_desc}',table=''),recipient_emails=recipient_mails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
