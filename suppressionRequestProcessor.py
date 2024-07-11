@@ -225,6 +225,7 @@ class Suppression_Request:
             if filter_details['id'] != 0:
                 #data append
                 data_append(main_request_details,filter_details, main_request_table, main_logger, mysql_cursor)
+
             main_logger.info("Fetching Error desc to find any failed files... ")
             main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
             mysql_cursor.execute(SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number)))
@@ -252,12 +253,12 @@ class Suppression_Request:
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
-            mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,
-                                 ('E', '0', str(e), supp_request_id, run_number))
+            error_desc = f"DO23: Unknown Exception occurred while processing the Dataset. Error: {str(e)}"
+            mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,('E', '0', error_desc, supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
             send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
-                                       status= f"E <br>Error Reason: {str(e)}", table=''),recipient_emails=recipient_emails)
+                                       status= f"E <br>Error Reason: {error_desc}", table=''),recipient_emails=recipient_emails)
             os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():

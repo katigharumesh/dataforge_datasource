@@ -185,7 +185,7 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_datasource_table} set email_id=lower(trim(email_id))")
             isps_filter = str(isps).replace(",","','")
-            logger.info("ISP filtration process initiated..")
+            logger.info("ISP filtration process initiated.")
             sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 logger.info("Adding column email_md5 if not available...")
@@ -648,7 +648,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             consumer_logger.info("The given file is not in required extension. ")
             file_details_dict['filename'] = file
             file_details_dict['status'] = 'E'
-            file_details_dict['error_msg'] = f'The given file {file} is not in required extension.'
+            file_details_dict['error_msg'] = f'The given file {file} is not in required extension. '
             file_details_dict["count"] = '0'
             file_details_dict["size"] = 'NA'
             file_details_dict["last_modified_time"] = 'NA'
@@ -659,8 +659,8 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             file_details_dict["size"] = 'NA'
             file_details_dict['status'] = 'E'
             file_details_dict["last_modified_time"] = 'NA'
-            file_details_dict['error_msg'] = f'The file_name {file} is not in the required format. Skipping the file.'
-            consumer_logger.info(f'The file_name  {file} is not in the required format. Skipping the file.')
+            file_details_dict['error_msg'] = f'The file_name {file} is not in the required format. '
+            consumer_logger.info(f'The file_name  {file} is not in the required format. ')
             return file_details_dict
         meta_data = source_obj.get_file_metadata(fully_qualified_file)  # metadata from ftp
         consumer_logger.info(f"Meta data fetched successfully for file:{file} Meta data: {meta_data}")
@@ -672,7 +672,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
                 consumer_logger.info("Found filename in last_iteration_file details. Checking for metadata..")
                 file_index = last_iteration_file_names_list.index(file)
                 if str(meta_data['size']) == last_iteration_files_details[file_index]['size'] and str(meta_data['last_modified']) == last_iteration_files_details[file_index]['last_modified_time']:
-                    consumer_logger.info("File " + file + " already processed last time.. So skipping the file.")
+                    consumer_logger.info("File " + file + " already processed last time. So skipping the file.")
                     file_details_dict = last_iteration_files_details[file_index]
                     return file_details_dict
         if source_sub_type != 'A':
@@ -696,15 +696,15 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             if not validate_header(temp_files_path + file , input_data_dict['headerValue'], input_data_dict['delimiter']):
                 file_details_dict["count"] = 0
                 file_details_dict['status'] = 'E'
-                file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
-                consumer_logger.info('The header is not matching with the given header. Skipping the file.')
+                file_details_dict['error_msg'] = 'The header is not matching with the given header. '
+                consumer_logger.info('The header is not matching with the given header. ')
                 return file_details_dict
         else:
             if not source_obj.header_validation(fully_qualified_file, input_data_dict['headerValue'], input_data_dict['delimiter']):
                 file_details_dict["count"] = 0
                 file_details_dict['status'] = 'E'
-                file_details_dict['error_msg'] = 'The header is not matching with the given header. Skipping the file.'
-                consumer_logger.info('The header is not matching with the given header. Skipping the file.')
+                file_details_dict['error_msg'] = 'The header is not matching with the given header. '
+                consumer_logger.info('The header is not matching with the given header. ')
                 return file_details_dict
 
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
@@ -2589,8 +2589,10 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
         stats_pulling_query = f'''select 'NA' as "OfferId",{grouping_columns.upper().replace(
-            'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace('LIST_ID','DO_FEEDNAME as "Feed Name"')}, count(1) 
-            as Count from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns.upper().replace('LIST_ID','DO_FEEDNAME')}'''
+            'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace(
+            'DO_JORNAYAMATCH','DO_JORNAYAMATCH as "Jornaya Status"').replace('DO_MOCKINGBIRDMATCH','DO_MOCKINGBIRDMATCH as "Mockingbird Status"').replace(
+            'LIST_ID','DO_FEEDNAME as "Feed Name"')}, count(1) as Count from {main_request_table} where 
+            do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' group by {grouping_columns.upper().replace('LIST_ID','DO_FEEDNAME')}'''
         logger.info(f"Pulling stats from snowflake. Executing query: {stats_pulling_query}")
         sf_cursor.execute(stats_pulling_query)
         stats = sf_cursor.fetchall()
@@ -2607,7 +2609,8 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
                 offerids_list = str(fetched_offers['success_offers']).split(',')
                 for offerid in offerids_list:
                     offer_stats_pulling_query = f'''select {offerid} as "OfferId",{grouping_columns.upper().replace(
-                        'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace('LIST_ID','DO_FEEDNAME as "Feed Name"')}
+                        'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace(
+            'DO_JORNAYAMATCH','DO_JORNAYAMATCH as "Jornaya Status"').replace('DO_MOCKINGBIRDMATCH','DO_MOCKINGBIRDMATCH as "Mockingbird Status"').replace('LIST_ID','DO_FEEDNAME as "Feed Name"')}
                         , count(1) as Count from {main_request_table} where do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and 
                         do_matchStatus_{offerid} != 'NON_MATCH' and do_suppressionStatus_{offerid} = 'CLEAN' group by {grouping_columns.upper().replace('LIST_ID','DO_FEEDNAME')}'''
                     logger.info(f"Pulling stats from snowflake. Executing query: {offer_stats_pulling_query}")
@@ -2636,7 +2639,8 @@ def populate_input_sources_table(main_request_details, main_request_table, logge
         logger.info(f"Fetching input source details from request table. Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
         input_sources = sf_cursor.fetchall()
-        input_sources_csv = ''
+        mysql_cursor.execute(DELETE_OLD_INPUT_SOURCES,(main_request_details['id'],))
+        logger.info(f"Deleted old input source details from {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table.")
         for input_source in input_sources:
             mysql_cursor.execute(INSERT_INPUT_SOURCES,(main_request_details['id'],input_source[0]))
         logger.info(f"Successfully populated input source details in {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} table.")
