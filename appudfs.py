@@ -2588,6 +2588,13 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
+        sf_cursor.execute(f"alter table {main_request_table} add column do_originalMatchStatus varchar default 'NON_MATCH'")
+        sf_query = f"update {main_request_table} set do_originalMatchStatus = DO_MATCHSTATUS, DO_MATCHSTATUS =  " \
+                   f"case when STARTSWITH(DO_MATCHSTATUS,'By Attribute') then 'By_Field' else  " \
+                   f"replace(SPLIT_PART(REGEXP_REPLACE(SPLIT_PART(DO_MATCHSTATUS,':',1),'^Dataset |^File ','')," \
+                   f"'/',-1),' ','') end where DO_MATCHSTATUS!='NON_MATCH';"
+        logger.info(f"Updating do_matchStatus value, Executing query: {sf_query}")
+        sf_cursor.execute(sf_query)
         stats_pulling_query = f'''select 'NA' as "OfferId",{grouping_columns.upper().replace(
             'DO_INPUTSOURCE','DO_INPUTSOURCE as "Input Source"').replace('DO_MATCHSTATUS','DO_MATCHSTATUS as "Matched Source"').replace(
             'DO_JORNAYAMATCH','DO_JORNAYAMATCH as "Jornaya Status"').replace('DO_MOCKINGBIRDMATCH','DO_MOCKINGBIRDMATCH as "Mockingbird Status"').replace(
@@ -2788,26 +2795,9 @@ class CustomError(Exception):
 
         if self.error_code not in ERROR_CODES:
             self.message = self.error_code
-        elif self.error_code == 'DO0':
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
-                pidfile=self.args1.get('pidfile', ''))
-        elif self.error_code == 'DO1':
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(n=self.args1['n'],
-                                                                                        m=self.args1['m'],
-                                                                                        error=self.args1['error'])
-        elif self.error_code == 'DO3':
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
-                operation=self.args1['operation'], error=self.args1['error'])
-        elif self.error_code in ['DO5', 'DO6', 'DO7']:
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(**self.args1)
-        elif self.error_code == 'DO23':
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
-                request_type=self.args1['request_type'], error=self.args1['error'])
         else:
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(
-                error=self.args1.get('error', ''))
+            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(**self.args1)
         if raise_exception:
             super().__init__(self.message)
-
 
 

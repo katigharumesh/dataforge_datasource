@@ -188,11 +188,6 @@ class Suppression_Request:
             if main_request_details['purdueSuppression']:
                 current_count = purdue_suppression(main_request_details, main_request_table, main_logger, current_count)
 
-            input_sources = populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
-
-            if main_request_details['autoGenerateFiles']:
-                populate_file_generation_details(main_request_details, main_logger, mysql_cursor, input_sources)
-
             #Offer downloading and suppression
             if main_request_details['offerSuppressionIds'] is not None:
                 main_logger.info(f"Acquiring Channel/Offer static files DB mysql connection")
@@ -220,11 +215,16 @@ class Suppression_Request:
             else:
                 main_logger.info(f"No offers are configured for suppression.")
 
-            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor, run_number)
-
             if filter_details['id'] != 0:
                 #data append
                 data_append(main_request_details,filter_details, main_request_table, main_logger, mysql_cursor)
+
+            populate_stats_table(main_request_details, main_request_table, main_logger, mysql_cursor, run_number)
+
+            input_sources = populate_input_sources_table(main_request_details, main_request_table, main_logger, mysql_cursor)
+
+            if main_request_details['autoGenerateFiles']:
+                populate_file_generation_details(main_request_details, main_logger, mysql_cursor, input_sources)
 
             main_logger.info("Fetching Error desc to find any failed files... ")
             main_logger.info(f"Executing query: {SUPP_FETCH_ERROR_MSG, (str(main_request_details['ScheduleId']), str(run_number))}")
