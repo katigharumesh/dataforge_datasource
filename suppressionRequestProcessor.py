@@ -259,7 +259,8 @@ class Suppression_Request:
             send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
                       MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request= "Suppression Request",request_id= str(supp_request_id),run_number= str(run_number),schedule_time= str(schedule_time),
                                        status= f"E <br>Error Reason: {error_desc}", table=''),recipient_emails=recipient_emails)
-            os.remove(pid_file)
+            if "DO0: Error occured due to processing of another instance" not in str(e):
+                os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
                 mysql_cursor.close()

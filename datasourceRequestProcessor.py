@@ -135,7 +135,8 @@ class Dataset:
                       ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
                       MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request="Dataset",request_id=str(request_id),run_number= str(run_number), schedule_time= str(schedule_time),
                                        status=f'E <br>Error Reason: {error_desc}',table=''),recipient_emails=recipient_mails)
-            os.remove(pid_file)
+            if "DO0: Error occured due to processing of another instance" not in str(e):
+                os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
                 mysql_cursor.close()
