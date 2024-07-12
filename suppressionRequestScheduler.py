@@ -4,14 +4,13 @@ from datetime import datetime, timezone
 import time
 import traceback
 from queue import Queue
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from serviceconfigurations import *
 from basicudfs import *
 from suppressionRequestProcessor import *
 
 logging.basicConfig(level=logging.INFO)
 logger = create_logger("scheduler_log", SUPP_LOG_PATH)
-date = str(datetime.now(timezone.utc).date())
 
 class RequestPicker:
     def __init__(self):
@@ -39,39 +38,38 @@ class RequestPicker:
         except Exception as e:
             logger.error(f"Error in suppressionRequestSchedule() :: {e}")
 
-    def processrequests(self):
-        while True:
-            request = self.request_queue.get()
-            if request is None:
-                break
-            logger.info(f"Request Processing Started .. {datetime.now()}")
-            updateflag = None
-            id = request[0]
-            startDate = str(request[7])
-            mysqlcon = self.create_connection()
-            try:
-                if startDate <= date:
-                    mysqlcur = mysqlcon.cursor()
-                    updatequery = f"UPDATE {SUPP_SCHEDULE_TABLE} SET status='I', runnumber=runnumber+1 WHERE ID = {id}"
-                    logger.info(f"Update query :: {updatequery}")
-                    mysqlcur.execute("SET time_zone = 'UTC';")
-                    mysqlcur.execute(updatequery)
-                    mysqlcon.commit()
-                    updateflag = True
-                    self.suppressionRequestSchedule(mysqlcon, updateflag, request)
-                    request_obj = Suppression_Request()
-                    request_obj.suppression_request_processor(request[1], request[2]+1, request[3], request[4], request[5])
-                else:
-                    logger.info(f"Request Scheduled in Future. It will initiate from {startDate} .....")
-            except Exception as e:
-                logger.error(f"Error in processrequests() :: {e}")
-                logger.error(traceback.print_exc())
-            finally:
-                mysqlcon.close()
-                self.request_queue.task_done()
+    def processrequests(self, thread_number):
+        request = self.request_queue.get()
+        logger.info(f"[Thread-{thread_number}] Request fetched from Queue ::: {request}")
+        if request is None:
+            logger.info(f"[Thread-{thread_number}] No request found... Closing this Thread...")
+            self.request_queue.task_done()
+            return
+        logger.info(f"[Thread-{thread_number}] Request Processing Started .. {datetime.now(timezone.utc)}")
+        updateflag = None
+        id = request[0]
+        mysqlcon = self.create_connection()
+        try:
+            mysqlcur = mysqlcon.cursor()
+            updatequery = f"UPDATE {SUPP_SCHEDULE_TABLE} SET status='I', runnumber=runnumber+1 WHERE ID = {id}"
+            logger.info(f"[Thread-{thread_number}] Update query :: {updatequery}")
+            mysqlcur.execute("SET time_zone = 'UTC';")
+            mysqlcur.execute(updatequery)
+            mysqlcon.commit()
+            updateflag = True
+            self.suppressionRequestSchedule(mysqlcon, updateflag, request)
+            request_obj = Suppression_Request()
+            request_obj.suppression_request_processor(request[1], request[2]+1, request[3], request[4], request[5])
+            logger.info(f"[Thread-{thread_number}] Request Successfully sent to Processor.... ID :: {id}")
+        except Exception as e:
+            logger.error(f"[Thread-{thread_number}] Error in processrequests() :: {e}")
+            logger.error(traceback.print_exc())
+        finally:
+            mysqlcon.close()
+            self.request_queue.task_done()
 
     def getrequests(self):
-        logger.info(f"Getrequests() :: {datetime.now()}")
+        logger.info(f"Getrequests() :: {datetime.now(timezone.utc)}")
         requestList = []
         mysqlcon = self.create_connection()
         try:
@@ -90,10 +88,10 @@ class RequestPicker:
         return requestList
 
     def requestThreadProcess(self):
-        logger.info(f"Thread Process Started :: {datetime.now()}")
+        logger.info(f"Thread Process Started :: {datetime.now(timezone.utc)}")
         try:
             with ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
-                futures = []
+                futures = {}
                 while True:
                     try:
                         waitingRequests = self.getrequests()
@@ -101,8 +99,19 @@ class RequestPicker:
                             logger.info(f"Waiting Requests are :: {waitingRequests}")
                             for request in waitingRequests:
                                 self.request_queue.put(request)
+                                logger.info(f" Request Sent to Queue :: request details {request}")
                             while not self.request_queue.empty():
-                                executor.submit(self.processrequests)
+                                if len(futures) < THREAD_COUNT:
+                                    thread_number = len(futures) + 1
+                                    future = executor.submit(self.processrequests, thread_number)
+                                    futures[future] = thread_number
+                                    logger.info(f"Request submitted to Thread-{thread_number} from Executor....")
+                                else:
+                                    logger.info("No thread is free, waiting for a thread to complete...")
+                                    completed_futures, _ = wait(futures.keys(), return_when=FIRST_COMPLETED)
+                                    for completed_future in completed_futures:
+                                        thread_number = futures.pop(completed_future)
+                                        logger.info(f"Thread-{thread_number} has completed.")
                         else:
                             logger.info(f"No waiting requests found ....")
                         time.sleep(5)
@@ -117,4 +126,3 @@ class RequestPicker:
 if __name__ == '__main__':
     obj = RequestPicker()
     obj.requestThreadProcess()
-
