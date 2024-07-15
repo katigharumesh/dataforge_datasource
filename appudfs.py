@@ -1816,7 +1816,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 if str(channel).upper() == 'GREEN':
                     sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
                                             f"from (select email from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
-                                            f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                            f"offer_id='{associate_offer_id}' and upper(channel)='GREEN' and CONVERSIONDATE>=current_date() - interval '2 months') " \
                                             f"b where a.email_id=b.email and do_matchStatus != 'NON_MATCH' and " \
                                             f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
                                             f" do_suppressionStatus_{offer_id} = 'CLEAN'"

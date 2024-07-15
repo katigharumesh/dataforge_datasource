@@ -119,7 +119,7 @@ SNOWFLAKE_CONFIGS = {
     "user": "green_lp_service",
     "password": "Jsw44QTLRYYGLGBgfhXQR7webwaxArWx",
     "database": "GREEN",
-    "warehouse": "GREEN_ADHOC",
+    "warehouse": "GREEN_DF_SUPPREQ",
     "schema": 'INFS_LPT_QA'
 }
 
