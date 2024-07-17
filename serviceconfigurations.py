@@ -409,4 +409,5 @@ ERROR_CODES = {
     'DO25': "Unknown Exception occurred while summarizing the request metrics. Error: {error}",
     'DO26': "The service is unable to connect to Snowflake DB. Error: {error}",
     'DO27': "The service is unable to connect to MySQL DB. Error: {error}",
+    'DO28': "All offers selected for the request are failed. So making this request Error.",
 }

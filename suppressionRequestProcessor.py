@@ -234,6 +234,8 @@ class Suppression_Request:
             main_logger.info(f"Executing query: {FETCH_FAILED_OFFERS, (main_request_details['id'], run_number)}")
             mysql_cursor.execute(FETCH_FAILED_OFFERS, (main_request_details['id'], run_number))
             failed_offer_dict = mysql_cursor.fetchone()
+            if len(str(failed_offer_dict['failed_offers']).split(",")) == len(str(main_request_details['offerSuppressionIds']).split(",")):
+                raise CustomError('DO28')
             if error_desc_dict['error_msg'] is not None or failed_offer_dict['failed_offers'] is not None:
                 main_logger.info(f"Fetched Error message is :: {error_desc_dict['error_msg']}")
                 main_logger.info(f"Fetched failed offer details :: {failed_offer_dict['failed_offers']}")

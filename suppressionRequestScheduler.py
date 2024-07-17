@@ -1,3 +1,5 @@
+import sys
+
 import mysql.connector
 import logging
 from datetime import datetime, timezone
@@ -18,11 +20,23 @@ class RequestPicker:
         self.request_queue = Queue()
 
     def create_connection(self):
-        while True:
-            mysqlcon = mysql.connector.connect(**self.mysql_config)
-            if mysqlcon.is_connected():
-                return mysqlcon
-            logger.info("Trying to get MySQL connection...")
+        retry_limit = 0
+        while retry_limit <= 5:
+            try:
+                if retry_limit == 5:
+                    logger.info("Unable to Get MySQL connection... after 5 retries..")
+                    send_skype_alert("Unable to Get MySQL connection... after 5 retries..")
+                    sys.exit(0)
+                logger.info("Trying to get MySQL connection...")
+                mysqlcon = mysql.connector.connect(**self.mysql_config)
+                retry_limit += 1
+                if mysqlcon.is_connected():
+                    return mysqlcon
+            except Exception as e:
+                logger.info(f"Exception caught during acquiring MySQL connection.. Here it is...{str(e)}")
+                logger.info("Unable to Get MySQL connection... Retrying again after 10 sec...")
+                time.sleep(10)
+                retry_limit += 1
 
     def suppressionRequestSchedule(self, mysqlcon, updateflag, request):
         logger.info(f"Suppression request schedule process started ....")
