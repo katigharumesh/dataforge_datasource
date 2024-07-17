@@ -234,8 +234,9 @@ class Suppression_Request:
             main_logger.info(f"Executing query: {FETCH_FAILED_OFFERS, (main_request_details['id'], run_number)}")
             mysql_cursor.execute(FETCH_FAILED_OFFERS, (main_request_details['id'], run_number))
             failed_offer_dict = mysql_cursor.fetchone()
-            if len(str(failed_offer_dict['failed_offers']).split(",")) == len(str(main_request_details['offerSuppressionIds']).split(",")):
-                raise CustomError('DO28')
+            if failed_offer_dict['failed_offers'] is not None:
+                if len(str(failed_offer_dict['failed_offers']).split(",")) == len(str(main_request_details['offerSuppressionIds']).split(",")):
+                    raise CustomError('DO28')
             if error_desc_dict['error_msg'] is not None or failed_offer_dict['failed_offers'] is not None:
                 main_logger.info(f"Fetched Error message is :: {error_desc_dict['error_msg']}")
                 main_logger.info(f"Fetched failed offer details :: {failed_offer_dict['failed_offers']}")
@@ -255,7 +256,7 @@ class Suppression_Request:
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
-            error_desc = f"DO23: Unknown Exception occurred while processing the Dataset. Error: {str(e)}"
+            error_desc = f"DO23: Unknown Exception occurred while processing the Suppression Request. Error: {str(e)}"
             mysql_cursor.execute(UPDATE_SUPP_SCHEDULE_STATUS,('E', '0', error_desc, supp_request_id, run_number))
             update_next_schedule_due("SUPPRESSION_REQUEST", supp_request_id, run_number, main_logger)
             send_mail("SUPP", supp_request_id, run_number, ERROR_EMAIL_SUBJECT.format(type_of_request= "Suppression Request",request_name=  str(main_request_details['name']), request_id= str(supp_request_id)),
