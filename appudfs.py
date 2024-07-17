@@ -43,13 +43,22 @@ def load_input_source(type_of_request, source, main_request_details):
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         consumer_logger.info("Mysql Connection established successfully...")
         if source_id == 0 and data_source_id is not None:
-            return tuple([data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger), index_number, mapping_id])
+            dataset_table_name = data_source_input("Suppression Request Input Source", data_source_id, mysql_cursor, consumer_logger)
+            mysql_cursor.execute(FETCH_DATASET_COUNT,(data_source_id,int(dataset_table_name.split('_')[-1])))
+            dataset_count = mysql_cursor.fetchone()['recordCount']
+            mysql_cursor.execute(FETCH_DATASET_NAME,(data_source_id,))
+            dataset_name = mysql_cursor.fetchone()['name']
+            mysql_cursor.execute(SUPP_INSERT_FILE_DETAILS, (
+                schedule_id, run_number, mapping_id, dataset_count, f'Dataset {dataset_name}',
+                'DATA OPS SERVICE', 'DATA OPS SERVICE', 'NA', 'NA', 'C', ''))
+            return tuple([dataset_table_name, index_number, mapping_id])
         consumer_logger.info(f"Acquiring snowflake connection...")
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor()
         consumer_logger.info("Snowflake connection established Successfully....")
 
         source_table = source_table_prefix + str(request_id) + '_' + str(mapping_id) + '_' + str(run_number)
+        temp_source_table = source_table_prefix + str(request_id) + '_' + str(mapping_id) + '_' + str(run_number) + '_TEMP'
         if source_type == "F":
             temp_files_path = f"{file_path}/{str(request_id)}/{str(run_number)}/{str(mapping_id)}/"
             os.makedirs(temp_files_path,exist_ok=True)
@@ -98,26 +107,34 @@ def load_input_source(type_of_request, source, main_request_details):
                             distinct_filter = ''
 
                         if main_request_details['feedType'] == 'F':
-                            grouping_fields = 'list_id,email_id'
-                            join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
+                            if main_request_details['channelName'] == 'INFS':
+                                grouping_fields = 'ACCOUNT_NAME,email_id'
+                                join_fields = 'a.ACCOUNT_NAME=b.ACCOUNT_NAME and a.email_id=b.email_id'
+                            else:
+                                grouping_fields = 'list_id,email_id'
+                                join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
                         else:
                             grouping_fields = 'email_id'
                             join_fields = 'a.email_id=b.email_id'
                     if dict(filter).__len__() != 1:
                         where_conditions.append(f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
                 source_table_preparation_query = f"create or replace transient table " \
-                                                 f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
-                                                 f"as select {distinct_filter} {main_request_details['FilterMatchFields']} " \
+                                                 f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_source_table} " \
+                                                 f"as select * " \
                                                  f"from {sf_data_source} where {' and '.join(where_conditions)} "
                 consumer_logger.info("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
                 if touch_filter:
-                    touch_filter_query = f"delete from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} a " \
+                    touch_filter_query = f"delete from {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_source_table} a " \
                                          f"using (select {grouping_fields} from" \
-                                         f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} " \
+                                         f" {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_source_table} " \
                                          f"group by {grouping_fields} having count(1)< {touch_count}) b where {join_fields}"
                     consumer_logger.info(f"Applying touch filter, executing query: {touch_filter_query}")
                     sf_cursor.execute(touch_filter_query)
+                sf_cursor.execute(f"create or replace transient table "
+                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} "
+                                  f"as select {distinct_filter} {main_request_details['FilterMatchFields']} from {temp_source_table} ")
+                sf_cursor.execute(f"drop table if exists {temp_source_table}")
                 sf_cursor.execute(f"alter table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table}" \
                                   f" add column do_inputSource varchar default '{sf_source_name}', do_inputSourceMappingId varchar default '{mapping_id}'")
                 sf_cursor.execute(
@@ -1102,14 +1119,14 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         gm_configured_isps = mysql_cursor.fetchone()['isps']
         sf_cursor.execute(f"update {temp_input_source_table} set isp = 'others' where isp not in ({gm_configured_isps})")
 
-        sf_cursor.execute(f"select count(1) from {temp_input_source_table}")
-        counts_after_filter = sf_cursor.fetchone()[0]
+        mysql_cursor.execute(FETCH_SUPP_REQUEST_INITIAL_COUNT,(schedule_id,run_number))
+        counts_before_filter = mysql_cursor.fetchone()['Total_Count']
         logger.info(f"Deleting old detailed stats, if existent for request_id: {request_id} , run_number: {run_number} . "
                     f"Executing query: {DELETE_SUPPRESSION_MATCH_DETAILED_STATS},({request_id},{run_number}) ")
         mysql_cursor.execute(DELETE_SUPPRESSION_MATCH_DETAILED_STATS, (request_id, run_number))
-        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_after_filter,0,0)}")
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_after_filter,0,0))
-        counts_before_filter = counts_after_filter
+        logger.info(f"{INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_before_filter,0,0)}")
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id,schedule_id,run_number,'NA','NA','NA','Initial Count',0,counts_before_filter,0,0))
+
 #Removing duplicates based on feed type
         logger.info(f"Performing deduplication based on feed level and request filter level configured "
                     f"removeDuplicates value: {remove_duplicates}")
@@ -1257,11 +1274,17 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         profile_table_details = mysql_cursor.fetchone()
         profile_table = profile_table_details['sfTableName']
         email_field = profile_table_details['emailField']
-
+        listid_field = profile_table_details['listIdField']
+        if str(main_request_details['channelName']).upper() == 'GREEN':
+            listid_cond = ''
+            listid_null_cond = ''
+        else:
+            listid_cond = f' and a.list_id = b.{listid_field}'
+            listid_null_cond = f' and b.{listid_field} is null'
         profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'Profile Non-match Filter'" \
                                              f" from (select distinct a.email_id from {main_request_table} a left join" \
-                                             f" {profile_table} b on a.email_id = lower(trim(b.{email_field})) where b.{email_field}" \
-                                             f" is null) b where a.email_id = b.email_id and do_suppressionStatus = 'CLEAN'"
+                                             f" {profile_table} b on a.email_id = lower(trim(b.{email_field})) {listid_cond} where " \
+                                             f"b.{email_field} is null {listid_null_cond}) b where a.email_id = b.email_id and do_suppressionStatus = 'CLEAN'"
         logger.info(f"Suppressing profile non-match records in {main_request_table}. Executing"
                     f" Query: {profile_non_match_filtration_query}")
         sf_cursor.execute(profile_non_match_filtration_query)
@@ -1533,7 +1556,7 @@ def perform_match_or_filter_selection(type_of_request,filter_details, main_reque
                 data_source_details_dict = json.loads(str(i).strip('"').replace("'", '"'))
                 data_source_table_name = data_source_input(type_of_request, data_source_details_dict['dataSourceId'], mysql_cursor, main_logger)
                 columns = data_source_details_dict['columns']
-                mysql_cursor.execute(FETCH_DATASOURCE_NAME, (data_source_details_dict['dataSourceId'],))
+                mysql_cursor.execute(FETCH_DATASET_NAME, (data_source_details_dict['dataSourceId'],))
                 data_source_name = 'Dataset ' + str(mysql_cursor.fetchone()['name'])
                 match_or_filter_sources.append(tuple([data_source_table_name, columns, data_source_name, 'DataSource']))
         if 'ByField' in match_or_filter_source_details.keys():
@@ -1815,9 +1838,9 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                 counts_before_filter = current_count
                 if str(channel).upper() == 'GREEN':
                     sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                            f"from (select email from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
-                                            f"offer_id='{associate_offer_id}' and upper(channel)='GREEN' and CONVERSIONDATE>=current_date() - interval '2 months') " \
-                                            f"b where a.email_id=b.email and do_matchStatus != 'NON_MATCH' and " \
+                                            f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                            f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                            f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
                                             f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
                                             f" do_suppressionStatus_{offer_id} = 'CLEAN'"
                 elif str(channel).upper() == 'APPTNESS':

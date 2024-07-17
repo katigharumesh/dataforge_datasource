@@ -174,7 +174,11 @@ OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.INFS_ORANGE_MAPPING_TABLE"
 
 FETCH_GM_CONFIGURED_ISPS = '''select group_concat(concat("'",ispName,"'")) as isps from ISP_DETAILS where isDeleted=0'''
 
-FETCH_DATASOURCE_NAME = f"select name from {DATASET_TABLE} where id = %s"
+FETCH_DATASET_NAME = f"select name from {DATASET_TABLE} where id = %s"
+FETCH_DATASET_COUNT = f"select recordCount from {SCHEDULE_STATUS_TABLE} where dataSourceId = %s and runNumber = %s "
+
+FETCH_SUPP_REQUEST_INITIAL_COUNT = f"select sum(count) as Total_Count from {SUPP_FILE_DETAILS_TABLE} where " \
+                                   f"suppressionRequestScheduleId = %s and runNumber = %s"
 
 UPDATE_SUPP_SCHEDULE = f"UPDATE {SUPP_SCHEDULE_TABLE} SET STATUS = %s WHERE requestId= %s AND runNumber =%s "
 UPDATE_SUPP_SCHEDULE_STATUS = f"update {SUPP_SCHEDULE_STATUS_TABLE} set status=%s, recordCount=%s, errorReason=%s where requestId=%s and runNumber=%s "
@@ -185,7 +189,7 @@ FETCH_SUPP_REQUEST_DETAILS = f'select a.id,a.name,a.channelName,a.userGroupId,a.
                              f',a.ftpIds from {SUPP_REQUEST_TABLE} a ' \
                              f'join {SUPP_SCHEDULE_STATUS_TABLE} b on a.id=b.requestId where a.id=%s and b.runNumber=%s'
 
-FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
+FETCH_PROFILE_TABLE_DETAILS = f'select sfTableName, emailField, listIdField from {SUPPRESSION_PROFILE_TABLES_LOOKUP_TABLE}' \
                               f' where channelName = %s'
 
 FETCH_SUPP_SOURCE_DETAILS = f'select a.id, a.requestId,a.sourceId,a.dataSourceId,a.inputData,b.name,b.hostname,b.port,b.username,b.password,' \
