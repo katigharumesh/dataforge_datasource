@@ -96,7 +96,11 @@ def load_input_source(type_of_request, source, main_request_details):
                             filter['value'] = f"current_date() - interval '{str(filter['value']).split(',')[0]} days'" \
                                               f" and current_date() - interval '{str(filter['value']).split(',')[1]} days'"
                         if filter['searchType'] == '>=':
-                            filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                            if filter['value'] == 'T':
+                                filter['searchType'] = 'between'
+                                filter['value'] = f"'2019-01-01' and current_date()"
+                            else:
+                                filter['value'] = f"current_date() - interval '{filter['value']} days'"
 
                     touch_filter = False
 
@@ -1118,6 +1122,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
         gm_configured_isps = mysql_cursor.fetchone()['isps']
         sf_cursor.execute(f"update {temp_input_source_table} set isp = 'others' where isp not in ({gm_configured_isps})")
+        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'Hotmail' where isp in ({HOTMAIL_ISPS})")
 
         mysql_cursor.execute(FETCH_SUPP_REQUEST_INITIAL_COUNT,(schedule_id,run_number))
         counts_before_filter = mysql_cursor.fetchone()['Total_Count']
@@ -1141,7 +1146,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
                           f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
             source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId'
-            dedup_field = ',do_inputSourceMappingId'
+            dedup_field = ',do_inputSource'
         else:
             source_join_fields = ''
             dedup_field = ''
@@ -1275,7 +1280,7 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
         profile_table = profile_table_details['sfTableName']
         email_field = profile_table_details['emailField']
         listid_field = profile_table_details['listIdField']
-        if str(main_request_details['channelName']).upper() == 'GREEN':
+        if str(main_request_details['channelName']).upper() != 'INFS':
             listid_cond = ''
             listid_null_cond = ''
         else:
@@ -1463,7 +1468,11 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
                 category_match_details['value'] = f"current_date() - interval '{str(category_match_details['value']).split(',')[0]} days'" \
                                                   f" and current_date() - interval '{str(category_match_details['value']).split(',')[1]} days'"
         elif category_match_details['searchType'] == '>=':
-            category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days'"
+            if category_match_details['value'] == 'T':
+                category_match_details['searchType'] = 'between'
+                category_match_details['value'] = f"'2019-01-01' and current_date()"
+            else:
+                category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days'"
 
         alter_query = f"alter table {main_request_table} add column {match_field} varchar default '{non_match_value}'"
         logger.info(f"Executing query: {alter_query}")
@@ -1605,7 +1614,12 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 elif filter['searchType'] == 'between' and filter['dataType'] == 'Number':
                     filter['value'] = filter['value'].replace(',', ' and ')
                 if filter['searchType'] == '>=':
-                    filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                    if filter['value'] == 'T':
+                        filter['searchType'] = 'between'
+                        filter['value'] = f"'2019-01-01' and current_date()"
+                    else:
+                        filter['value'] = f"current_date() - interval '{filter['value']} days'"
+
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
             else:
@@ -1847,7 +1861,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                     sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
                                             f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
                                             f"offer_id='{associate_offer_id}' and upper(channel)='APPTNESS' and CONVERSIONDATE>=current_date() - interval '6 months') " \
-                                            f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
+                                            f"b where cast(a.profile_id as varchar)=b.profileid and do_matchStatus != 'NON_MATCH' and " \
                                             f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
                                             f" do_suppressionStatus_{offer_id} = 'CLEAN'"
                 offer_logger.info(f"Executing query:  {sf_update_table_query}")
@@ -1873,7 +1887,12 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
     except Exception as e:
         offer_logger.info(f"Exception occurred: At offer_download_and_suppression for requestid: {request_id}, "
                          f"runNumber: {run_number}, offerid: {offer_id}. Please look into this. {str(e)}" + str(traceback.format_exc()))
+        sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
+        sf_cursor = sf_conn.cursor()
         sf_cursor.execute(f"alter table {main_request_table} drop column do_matchStatus_{offer_id} , do_suppressionStatus_{offer_id} ")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
+        mysql_cursor.execute(f"UPDATE {SUPPRESSION_REQUEST_OFFERS_TABLE} SET STATUS='E' where requestId={request_id} and requestScheduledId={schedule_id} and runNumber={run_number} and offerId={offer_id} ")
     finally:
         if 'connection' in locals() and offer_files_db_conn.is_connected():
             offer_files_db_cursor.close()
@@ -2595,6 +2614,8 @@ def purdue_suppression(main_request_details, main_request_table, logger, counts_
         logger.error(f"Exception occurred while performing purdue suppression. {str(e)} " + str(traceback.format_exc()))
         logger.error(f"Making purdue status as Error in {PURDUE_SUPP_LOOKUP_TABLE} for request_id: {result['requestId']}"
                      f", run_number: {result['runNumber']} . Executing: {PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number)}  ")
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
         mysql_cursor.execute(PURDUE_UPDATE_STATUS_QUERY, ('E', request_id, run_number))
         raise CustomError('DO19',{'error': str(e)})
     finally:
@@ -2819,7 +2840,7 @@ class CustomError(Exception):
         if self.error_code not in ERROR_CODES:
             self.message = self.error_code
         else:
-            self.message = f"{self.error_code}: {ERROR_CODES[self.error_code]}.".format(**self.args1)
+            self.message = f"{ERROR_CODES[self.error_code]}".format(**self.args1)
         if raise_exception:
             super().__init__(self.message)
 

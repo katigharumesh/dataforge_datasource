@@ -173,6 +173,7 @@ FP_LISTIDS_SF_TABLE = "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_LOOKUP_DONOTDROP_RT"
 OTEAM_FP_LISTIDS_SF_TABLE = "INFS_LPT.INFS_ORANGE_MAPPING_TABLE"
 
 FETCH_GM_CONFIGURED_ISPS = '''select group_concat(concat("'",ispName,"'")) as isps from ISP_DETAILS where isDeleted=0'''
+HOTMAIL_ISPS = "'hotmail.com','live.com','msn.com','outlook.com'"
 
 FETCH_DATASET_NAME = f"select name from {DATASET_TABLE} where id = %s"
 FETCH_DATASET_COUNT = f"select recordCount from {SCHEDULE_STATUS_TABLE} where dataSourceId = %s and runNumber = %s "
@@ -262,13 +263,13 @@ GREEN_GLOBAL_SUPP_TABLES = (
     {"Global Unsubs"          : ("GREEN_LPT.PFM_UNIVERSE_UNSUBS",
                                  "GREEN_LPT.GREEN_UNSUBS",
                                  "INFS_LPT.GLOBAL_COMPLAINER_EMAILS",
+                                 "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
                                  "INFS_LPT.ABUSE_DETAILS")
      },
     {"Miscilenious Unsubs"   : ("GREEN_LPT.APT_CUSTOM_Datatonomy_SUPPRESSION_DND",
                                 "GREEN_LPT.PFM_FLUENT_REGISTRATIONS_CANADA",
                                 "GREEN_LPT.APT_CUSTDOD_ORANGE_EOS_RETURNS_INAVLID_EMAILS",
                                 "GREEN_LPT.APT_CUSTDOD_NONUS_DATA_PROFILE",
-                                "GREEN_LPT.APT_CUSTOM_GLOBAL_HARDBOUNCES_DATA",
                                 "GREEN_LPT.APT_CUSTOM_GLOBAL_SOFTINACTIVE")
     }
    )

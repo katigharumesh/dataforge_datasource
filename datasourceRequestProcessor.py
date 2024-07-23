@@ -128,14 +128,16 @@ class Dataset:
             os.remove(pid_file)
         except Exception as e:
             main_logger.info(f"Exception occurred: {str(e)}" + str(traceback.format_exc()))
-            error_desc = f"DO23: Unknown Exception occurred while processing the Dataset. Error: {str(e)}"
+            error_desc = str(e)
+            mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+            mysql_cursor = mysql_conn.cursor(dictionary=True)
             mysql_cursor.execute(UPDATE_SCHEDULE_STATUS, ('E', '0', error_desc, request_id, run_number))
             update_next_schedule_due("SUPPRESSION_DATASET", request_id, run_number, main_logger)
             send_mail("DATASET", request_id, run_number,
                       ERROR_EMAIL_SUBJECT.format(type_of_request="Dataset",request_name= str(main_request_details['name']), request_id= str(request_id)),
                       MAIL_BODY.format(channel=main_request_details['channelName'] ,type_of_request="Dataset",request_id=str(request_id),run_number= str(run_number), schedule_time= str(schedule_time),
                                        status=f'E <br>Error Reason: {error_desc}',table=''),recipient_emails=recipient_mails)
-            if "DO0: Error occured due to processing of another instance" not in str(e):
+            if "Error occured due to processing of another instance" not in str(e):
                 os.remove(pid_file)
         finally:
             if 'connection' in locals() and mysql_conn.is_connected():
