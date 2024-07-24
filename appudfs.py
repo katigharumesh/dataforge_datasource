@@ -96,11 +96,11 @@ def load_input_source(type_of_request, source, main_request_details):
                             filter['value'] = f"current_date() - interval '{str(filter['value']).split(',')[0]} days'" \
                                               f" and current_date() - interval '{str(filter['value']).split(',')[1]} days'"
                         if filter['searchType'] == '>=':
+                            filter['searchType'] = 'between'
                             if filter['value'] == 'T':
-                                filter['searchType'] = 'between'
                                 filter['value'] = f"'2019-01-01' and current_date()"
                             else:
-                                filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                                filter['value'] = f"current_date() - interval '{filter['value']} days' and current_date()"
 
                     touch_filter = False
 
@@ -1468,11 +1468,11 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
                 category_match_details['value'] = f"current_date() - interval '{str(category_match_details['value']).split(',')[0]} days'" \
                                                   f" and current_date() - interval '{str(category_match_details['value']).split(',')[1]} days'"
         elif category_match_details['searchType'] == '>=':
+            category_match_details['searchType'] = 'between'
             if category_match_details['value'] == 'T':
-                category_match_details['searchType'] = 'between'
                 category_match_details['value'] = f"'2019-01-01' and current_date()"
             else:
-                category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days'"
+                category_match_details['value'] = f"current_date() - interval '{category_match_details['value']} days' and current_date()"
 
         alter_query = f"alter table {main_request_table} add column {match_field} varchar default '{non_match_value}'"
         logger.info(f"Executing query: {alter_query}")
@@ -1614,11 +1614,11 @@ def perform_filter_or_match(type_of_request, main_request_details, main_request_
                 elif filter['searchType'] == 'between' and filter['dataType'] == 'Number':
                     filter['value'] = filter['value'].replace(',', ' and ')
                 if filter['searchType'] == '>=':
+                    filter['searchType'] = 'between'
                     if filter['value'] == 'T':
-                        filter['searchType'] = 'between'
                         filter['value'] = f"'2019-01-01' and current_date()"
                     else:
-                        filter['value'] = f"current_date() - interval '{filter['value']} days'"
+                        filter['value'] = f"current_date() - interval '{filter['value']} days' and current_date()"
 
                 sf_update_table_query = f"UPDATE {main_request_table}  a  SET  a.{column_to_update} ='{filter_name}'" \
                                         f" WHERE {filter['fieldName']} {filter['searchType']} {filter['value']} "
