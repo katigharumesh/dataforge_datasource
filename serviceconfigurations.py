@@ -295,7 +295,7 @@ INFS_FEED_LEVEL_SUPP_TABLES = {
     ),
     'email_listid': (
         { "Account Level Unsubs":  ( "INFS_LPT.unsub_details_oteam",) },
-        { "IEP Unsubs" :  ("select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain))",)},
+        { "IEP Unsubs" :  ("select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326",)},
         { "Orange Account Unsubs" :  ("select email,listid from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE a join (select distinct listid,account_name from INFS_LPT.GM_SUBID_DOMAIN_DETAILS) b on a.account_name=b.account_name",)},
         {"Static Account level INFS Unsubs": ("INFS_LPT.infs_account_level_static_suppression_data",)}
     ),

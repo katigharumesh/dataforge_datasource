@@ -1284,8 +1284,8 @@ def profile_non_match_filtration(current_count, main_request_table, logger, mysq
             listid_cond = ''
             listid_null_cond = ''
         else:
-            listid_cond = f' and a.list_id = b.{listid_field}'
-            listid_null_cond = f' and b.{listid_field} is null'
+            listid_cond = ''
+            listid_null_cond = ''
         profile_non_match_filtration_query = f"update {main_request_table} a set a.do_suppressionStatus = 'Profile Non-match Filter'" \
                                              f" from (select distinct a.email_id from {main_request_table} a left join" \
                                              f" {profile_table} b on a.email_id = lower(trim(b.{email_field})) {listid_cond} where " \
