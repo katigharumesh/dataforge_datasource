@@ -44,10 +44,10 @@ import boto3
 
 # SCRIPT_PATH = r"D:\tmp\data_forge"
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/DATASET/"
+SCRIPT_PATH = r"/gmservices/DATAOPS/DATASET"
 
 LOG_PATH = SCRIPT_PATH + "app_logs"
-FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/DATASET/r_logs/"   # local file path - mount to download the temp files
+FILE_PATH = "/gmserviceslogs/DATAOPS/DATASET/r_logs/"   # local file path - mount to download the temp files
 PID_FILE = SCRIPT_PATH + "app_REQUEST_ID.pid"
 LOG_FILES_REMOVE_LIMIT = 30
 
@@ -60,8 +60,8 @@ skype_configurations = {
     'file_path': SCRIPT_PATH,
     'default_channel': '19:69777cb1e0d94ef9ba894c5d4d7eb3b6@thread.skype',
     'script_path': SCRIPT_PATH,
-    'script_name': 'main_app.py',
-    'server': 'zds-prod-job-02.bo3.e-dialog.com',
+    'script_name': 'Data Ops',
+    'server': 'zdl3-mn09.bo3.e-dialog.com',
     'log_path': LOG_PATH
 }
 
@@ -79,8 +79,8 @@ MYSQL_CONFIGS = {
 MYSQL_CONFIGS = {
     'user': 'pmtauser',
     'password': 'pmta12#$',
-    'host': '10.100.6.181',
-    'database': 'CAMPAIGN_TOOL_QA',
+    'host': 'zx-prod-db1-vip.bo3.e-dialog.com',
+    'database': 'CAMPAIGN_TOOL',
     'autocommit': True,
     'allow_local_infile': True
 }
@@ -120,7 +120,7 @@ SNOWFLAKE_CONFIGS = {
     "password": "Jsw44QTLRYYGLGBgfhXQR7webwaxArWx",
     "database": "GREEN",
     "warehouse": "GREEN_DF_SUPPREQ",
-    "schema": 'INFS_LPT_QA'
+    "schema": 'DF_SUPPREQ'
 }
 
 STAGE_TABLE_PREFIX = 'STAGE_DO_DATASET_MAPPING_'
@@ -138,10 +138,10 @@ LAST_SUCCESSFUL_RUN_NUMBER_QUERY = f"select  if(max(runNumber) is NULL,-1,max(ru
 
 '''' SUPPRESSION REQUEST CONFIGS '''
 
-SUPP_SCRIPT_PATH = r"/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/"
+SUPP_SCRIPT_PATH = r"/gmservices/DATAOPS/SUPPRESSION_REQUEST/"
 #SUPP_SCRIPT_PATH = r"D:\tmp\data_forge"
 SUPP_LOG_PATH = SUPP_SCRIPT_PATH + "supp_logs"
-SUPP_FILE_PATH = "/zds-stg-cas/zxcustom/DATAOPS/SUPPRESSION_REQUEST/r_logs"  # local file path - mount to download the temp files
+SUPP_FILE_PATH = "/gmserviceslogs/DATAOPS/SUPPRESSION_REQUEST/r_logs/"  # local file path - mount to download the temp files
 SUPP_PID_FILE = SUPP_SCRIPT_PATH + "supp_REQUEST_ID.pid"
 
 SUPP_SOURCE_TABLE_PREFIX = "DO_SUPPRESSION_REQUEST_MAPPING_"
@@ -151,7 +151,7 @@ SUPP_REQUEST_TABLE = "SUPPRESSION_REQUEST"
 SUPP_SCHEDULE_TABLE = "SUPPRESSION_REQUEST_SCHEDULE"
 SUPP_MAPPING_TABLE = "SUPPRESSION_REQUEST_MAPPING"
 SUPP_SCHEDULE_STATUS_TABLE = "SUPPRESSION_REQUEST_SCHEDULE_STATUS"
-SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_DETAILED_STATS"
+SUPPRESSION_MATCH_DETAILED_STATS_TABLE = "SUPPRESSION_MATCH_SUPPRESSION_BREAKDOWN_STATS"
 SUPPRESSION_REQUEST_FILTERS_TABLE = "SUPPRESSION_REQUEST_FILTERS"
 SUPPRESSION_PRESET_FILTERS_TABLE = "SUPPRESSION_PRESET_FILTERS"
 SUPPRESSION_REQUEST_OFFERS_TABLE = "SUPPRESSION_REQUEST_OFFERS"
@@ -216,8 +216,8 @@ FETCH_REQUEST_FILTER_DETAILS = "select id,name,isps,matchedDataSources,suppressi
                                "appendPostalFields,profileFields," \
                                "postalFields,isActive,outputRemainingData from {} where id = {}"
 
-JORNAYA_TABLE = 'LIST_PROCESSING_UAT.JORNAYA_DATA'
-MOCKINGBIRD_TABLE = 'LIST_PROCESSING_UAT.MOCKINGBIRD_DATA'
+JORNAYA_TABLE = 'DF_DATASYNC.JORNAYA_DATA'
+MOCKINGBIRD_TABLE = 'DF_DATASYNC.MOCKINGBIRD_DATA'
 
 INSERT_INPUT_SOURCES = f"insert into {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE}(requestId,inputSource) values (%s,%s)"
 DELETE_OLD_INPUT_SOURCES = f"delete from {SUPPRESSION_REQUEST_INPUT_SOURCES_TABLE} where requestId = %s"
@@ -226,17 +226,17 @@ INSERT_REQUEST_OFFERS = f"insert into {SUPPRESSION_REQUEST_OFFERS_TABLE} (reques
 
 MAX_OFFER_THREADS_COUNT = 2
 
-OFFER_PROCESSING_SCRIPT = f"/usr/bin/sh -x /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_consumer.sh "
+OFFER_PROCESSING_SCRIPT = f"/usr/bin/sh -x /gmservices/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_consumer.sh "
 
 CHANNEL_AFFILIATE_TABLE = "CHANNEL_LIST"
-CHANNEL_OFFER_FILES_SF_SCHEMA = "LIST_PROCESSING_UAT"
-OFFER_SUPP_TABLES_SF_SCHEMA = "LIST_PROCESSING_UAT"
+CHANNEL_OFFER_FILES_SF_SCHEMA = "LIST_PROCESSING"
+OFFER_SUPP_TABLES_SF_SCHEMA = "LIST_PROCESSING"
 CAKE_CONVERTION_TABLES_SF_SCHEMA = "LIST_PROCESSING"
 
 CHANNEL_OFFER_FILES_DB_CONFIG = {
-    'user': 'zxdev',
-    'password': 'zxdev12#$',
-    'host': '10.100.6.181',
+    'user': 'techuser',
+    'password': 'tech12#$',
+    'host': 'zds-prod-mdb-vip.bo3.e-dialog.com',
     'database': 'GR_TOOL_DB',
     'autocommit': True,
     'allow_local_infile': True
@@ -244,7 +244,7 @@ CHANNEL_OFFER_FILES_DB_CONFIG = {
 
 FETCH_AFFILIATE_CHANNEL_VALUE = f"select channelvalue,table_prefix from {CHANNEL_AFFILIATE_TABLE} where channel = upper(%s) "
 
-POSTAL_TABLE = "INFS_LPT_QA.POSTAL_DATA"
+POSTAL_TABLE = "INFS_LPT.POSTAL_DATA"
 
 APPEND_POSTAL_FIELDS_SOURCE = f"SELECT sfDatabase,sfSchema,sfTable,sfQuery FROM {SOURCE_TYPES_TABLE} WHERE sourceType = 'A' and sourceSubType = 'A' and channelName = %s"
 APPEND_PROFILE_FIELDS_SOURCE = f"SELECT sfDatabase,sfSchema,sfTable,sfQuery FROM {SOURCE_TYPES_TABLE} WHERE sourceType = 'A' and sourceSubType = 'P' and channelName = %s"

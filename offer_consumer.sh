@@ -6,7 +6,7 @@ LPT=$5
 schedule_id=$6
 run_number=$7
 
-source /home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_download_config.sh $LPT $channel $request_id $run_number
+source /gmservices/DATAOPS/SUPPRESSION_REQUEST/OFFER_DOWNLOADING_SERVICES/offer_download_config.sh $LPT $channel $request_id $run_number
 
 set +euo pipefail
 

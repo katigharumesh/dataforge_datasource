@@ -1,6 +1,6 @@
 #!/bin/sh
 
-basepath='/home/zxdev/zxcustom/DATAOPS/SUPPRESSION_REQUEST'
+basepath='/gmservices/DATAOPS/SUPPRESSION_REQUEST'
 PYTHON_PATH='/home/zxdev/lptServices/PYTHON_FILES/'
 pidPath=$basepath/pidfile.txt
 

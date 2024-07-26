@@ -2812,7 +2812,7 @@ def add_table(main_request_details, run_number):
                      f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
                      f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
                      f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
-                     f'''FROM SUPPRESSION_MATCH_DETAILED_STATS '''
+                     f'''FROM {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} '''
                      f'''WHERE requestid = {main_request_details['id']} AND runNumber = {run_number} AND offerid=0''')
             mysql_cursor.execute(query)
             table_details = mysql_cursor.fetchall()
@@ -2850,7 +2850,7 @@ def add_table(main_request_details, run_number):
                              f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(insertcount, 0), '</td>') AS 'Insert Count', '''
                              f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsbeforefilter, 0), '</td>') AS 'Count Before Filter', '''
                              f'''CONCAT('<td style="font-family: LatoWeb ;border: 1px solid ; padding: 8px; text-align: left;">', FORMAT(countsafterfilter, 0), '</td>') AS 'Count After Filter' '''
-                             f'''FROM SUPPRESSION_MATCH_DETAILED_STATS '''
+                             f'''FROM {SUPPRESSION_MATCH_DETAILED_STATS_TABLE} '''
                              f'''WHERE requestid={main_request_details['id']} AND runNumber = {run_number} AND offerid={offer_id} '''
                              f'''ORDER BY lastupdated;''')
                     mysql_cursor.execute(query)
