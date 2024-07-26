@@ -1471,12 +1471,14 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
         if category == 'Jornaya':
             source_table = JORNAYA_TABLE
             filter_name = 'Jornaya Match'
+            non_match_filter_name = 'Jornaya Non-Matched data'
             match_field = 'do_jornayaMatch'
             match_value = 'JORNAYA_MATCH'
             non_match_value = 'JORNAYA_NON_MATCH'
         elif category == 'Mockingbird':
             source_table = MOCKINGBIRD_TABLE
             filter_name = 'Mockingbird Match'
+            non_match_filter_name = 'Mockingbird Non-Matched data'
             match_field = 'do_mockingbirdMatch'
             match_value = 'MB_MATCH'
             non_match_value = 'MB_NON_MATCH'
@@ -1499,34 +1501,32 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
         logger.info(f"Executing query: {alter_query}")
         sf_cursor.execute(alter_query)
         sf_query = f"update {main_request_table} a set {match_field} = '{match_value}' from {source_table} b where " \
-                   f"a.EMAIL_MD5 = b.EMAIL_MD5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and" \
+                   f"a.EMAIL_MD5 = b.EMAIL_MD5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and " \
                    f"b.LAST_ACTION_DATE {category_match_details['searchType']} {category_match_details['value']}"
         logger.info(f"Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
-
-        counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
-        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
-                                                                       main_request_details['runNumber'], 'NA','Match', 'NA',
-                                                                       filter_name, counts_before_filter,
-                                                                       counts_after_filter, 0, 0))
-
-
-        if category_match_details['nonMatchData']:
-            logger.info(f"Opted to consider {category} non-matched data as well")
-            return counts_before_filter
-
-        sf_query = f"update {main_request_table} set do_suppressionStatus = '{filter_name}' " \
-                   f"where {match_field} = '{non_match_value}' and do_suppressionStatus = 'CLEAN'"
-        logger.info(f"Suppressing {category} non-match records in {main_request_table}. Executing"
-                    f" Query: {sf_query}")
+        sf_query = f"select count(1) from {main_request_table} where {match_field} = '{match_value}'"
+        logger.info(f"Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
-
-        counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
+        counts_after_filter = sf_cursor.fetchone()[0]
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
                                                                        main_request_details['runNumber'], 'NA','Match', 'NA',
-                                                                       filter_name, counts_before_filter,
+                                                                       filter_name, 0,
                                                                        counts_after_filter, 0, 0))
-        return counts_after_filter
+
+        if not category_match_details['nonMatchData']:
+            logger.info(f"Opted to not consider {category} non-matched data")
+            sf_query = f"update {main_request_table} set do_suppressionStatus = '{non_match_value}' where " \
+                       f"{match_field} = '{non_match_value}' and do_suppressionStatus = 'CLEAN' and do_matchStatus != 'NON_MATCH'"
+            logger.info(f"Executing query: {sf_query}")
+            sf_cursor.execute(sf_query)
+            return counts_after_filter
+        logger.info(f"Opted to consider {category} non-matched data as well")
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
+                                                                       main_request_details['runNumber'], 'NA','Match', 'NA',
+                                                                       non_match_filter_name, counts_after_filter,
+                                                                       counts_before_filter, 0, 0))
+        return counts_before_filter
     except Exception as e:
         logger.error(f"Exception occurred while performing {category} non-match filtration. {str(e)} " + str(traceback.format_exc()))
         raise Exception(
@@ -1535,6 +1535,7 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
         if 'connection' in locals() and sf_conn.is_connected():
             sf_cursor.close()
             sf_conn.close()
+
 
 
 def update_default_values(type_of_request, main_request_table, logger):
