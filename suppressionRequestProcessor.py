@@ -150,6 +150,13 @@ class Suppression_Request:
                 current_count = channel_adhoc_files_match_and_suppress("Suppress",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
             if filter_details['id'] != 0:
+                # Data Match Selection
+                current_count = perform_match_or_filter_selection("Match",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+
+                # Validate Remaining Data (Non-matched)
+                if filter_details['outputRemainingData']:
+                    current_count = validate_remaining_data(main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
+
                 # Jornaya match
                 jornaya_match_details = json.loads(filter_details['matchJornayaData'])
                 if jornaya_match_details['isEnabled']:
@@ -159,13 +166,6 @@ class Suppression_Request:
                 mockingbird_match_details = json.loads(filter_details['matchMockingBirdData'])
                 if mockingbird_match_details['isEnabled']:
                     current_count = jornaya_and_mockingbird_match('Mockingbird', current_count, main_request_table, main_logger, mysql_cursor, main_request_details, mockingbird_match_details)
-
-                # Data Match Selection
-                current_count = perform_match_or_filter_selection("Match",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
-
-                # Validate Remaining Data (Non-matched)
-                if filter_details['outputRemainingData']:
-                    current_count = validate_remaining_data(main_request_details, main_request_table, mysql_cursor, main_logger, current_count)
 
                 # Data filter Selection
                 current_count = perform_match_or_filter_selection("Suppression",filter_details, main_request_details, main_request_table, mysql_cursor, main_logger, current_count)

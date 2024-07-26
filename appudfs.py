@@ -33,6 +33,7 @@ def load_input_source(type_of_request, source, main_request_details):
         source_sub_type = source['sourceSubType']
         schedule_id = main_request_details['ScheduleId']
         run_number = main_request_details['runNumber']
+        feed_type = main_request_details['feedType']
         distinct_filter = 'distinct'
         if input_data is not None:
             input_data_dict = json.loads(input_data.strip('"').replace("'", '"'))
@@ -110,22 +111,33 @@ def load_input_source(type_of_request, source, main_request_details):
                         if int(touch_count) > 1:
                             distinct_filter = ''
 
-                        if main_request_details['feedType'] == 'F':
-                            if main_request_details['channelName'] == 'INFS':
-                                grouping_fields = 'ACCOUNT_NAME,email_id'
-                                join_fields = 'a.ACCOUNT_NAME=b.ACCOUNT_NAME and a.email_id=b.email_id'
-                            else:
-                                grouping_fields = 'list_id,email_id'
-                                join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
-                        else:
-                            grouping_fields = 'email_id'
-                            join_fields = 'a.email_id=b.email_id'
                     if dict(filter).__len__() != 1:
                         where_conditions.append(f" {filter['fieldName']} {filter['searchType']} {filter['value']} ")
+                if feed_type == 'F':
+                    if main_request_details['channelName'] == 'INFS':
+                        grouping_fields = 'ACCOUNT_NAME,email_id'
+                        join_fields = 'a.ACCOUNT_NAME=b.ACCOUNT_NAME and a.email_id=b.email_id'
+                    else:
+                        grouping_fields = 'list_id,email_id'
+                        join_fields = 'a.list_id=b.list_id and a.email_id=b.email_id'
+                else:
+                    grouping_fields = 'email_id'
+                    join_fields = 'a.email_id=b.email_id'
+                feed_type_cond = ''
+                if source_sub_type in ('R', 'D'):
+                    if main_request_details['channelName'] == 'INFS':
+                        fp_listids_table = OTEAM_FP_LISTIDS_SF_TABLE
+                    else:
+                        fp_listids_table = FP_LISTIDS_SF_TABLE
+                    if feed_type == 'F':
+                        feed_type_cond = f'and list_id in (select listid from {fp_listids_table})'
+                    elif feed_type == 'T':
+                        feed_type_cond = f'and list_id not in (select listid from {fp_listids_table})'
+
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_source_table} " \
                                                  f"as select * " \
-                                                 f"from {sf_data_source} where {' and '.join(where_conditions)} "
+                                                 f"from {sf_data_source} where {' and '.join(where_conditions)} {feed_type_cond}"
                 consumer_logger.info("Source table preparation query: " + source_table_preparation_query)
                 sf_cursor.execute(source_table_preparation_query)
                 if touch_filter:
@@ -210,7 +222,16 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
             sf_cursor.execute(f"update {temp_datasource_table} set email_id=lower(trim(email_id))")
             isps_filter = str(isps).replace(",","','")
             logger.info("ISP filtration process initiated.")
-            sf_cursor.execute(f"delete from {temp_datasource_table} where split_part(email_id,'@',-1) not in ('{isps_filter}')")
+            sf_cursor.execute(f"alter table {temp_datasource_table} add column if not exists isp varchar")
+            sf_cursor.execute(f"update {temp_datasource_table} set isp=split_part(email_id,'@',-1)")
+            mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+            mysql_cursor = mysql_conn.cursor(dictionary=True)
+            mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
+            gm_configured_isps = mysql_cursor.fetchone()['isps']
+            sf_cursor.execute(
+                f"update {temp_datasource_table} set isp = 'Others' where isp not in ({gm_configured_isps})")
+
+            sf_cursor.execute(f"delete from {temp_datasource_table} where isp not in ('{isps_filter}')")
             if 'email_md5' not in str(filter_match_fields).lower().split(','):
                 logger.info("Adding column email_md5 if not available...")
                 sf_cursor.execute(f"alter table {temp_datasource_table} add column email_md5 varchar as md5(email_id)")
@@ -220,8 +241,6 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         sf_cursor.execute(f"select count(1) from {main_datasource_table}")
         record_count = sf_cursor.fetchone()[0]
         logger.info(f"Final table : {main_datasource_table} Count : {record_count}")
-        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-        mysql_cursor = mysql_conn.cursor(dictionary=True)
         logger.info("Fetching Error desc to find any failed files... ")
         logger.info(f"Executing query: {FETCH_ERROR_MSG, (str(schedule_id), str(run_number))}")
         mysql_cursor.execute(FETCH_ERROR_MSG, (str(schedule_id), str(run_number)))
@@ -1451,13 +1470,13 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
         sf_cursor = sf_conn.cursor()
         if category == 'Jornaya':
             source_table = JORNAYA_TABLE
-            filter_name = 'Jornaya Non-match Filter'
+            filter_name = 'Jornaya Match'
             match_field = 'do_jornayaMatch'
             match_value = 'JORNAYA_MATCH'
             non_match_value = 'JORNAYA_NON_MATCH'
         elif category == 'Mockingbird':
             source_table = MOCKINGBIRD_TABLE
-            filter_name = 'Mockingbird Non-match Filter'
+            filter_name = 'Mockingbird Match'
             match_field = 'do_mockingbirdMatch'
             match_value = 'MB_MATCH'
             non_match_value = 'MB_NON_MATCH'
@@ -1480,10 +1499,17 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
         logger.info(f"Executing query: {alter_query}")
         sf_cursor.execute(alter_query)
         sf_query = f"update {main_request_table} a set {match_field} = '{match_value}' from {source_table} b where " \
-                   f"a.EMAIL_MD5 = b.EMAIL_MD5 and a.do_suppressionStatus = 'CLEAN' and " \
+                   f"a.EMAIL_MD5 = b.EMAIL_MD5 and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' and" \
                    f"b.LAST_ACTION_DATE {category_match_details['searchType']} {category_match_details['value']}"
         logger.info(f"Executing query: {sf_query}")
         sf_cursor.execute(sf_query)
+
+        counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
+        mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
+                                                                       main_request_details['runNumber'], 'NA','Match', 'NA',
+                                                                       filter_name, counts_before_filter,
+                                                                       counts_after_filter, 0, 0))
+
 
         if category_match_details['nonMatchData']:
             logger.info(f"Opted to consider {category} non-matched data as well")
@@ -1497,7 +1523,7 @@ def jornaya_and_mockingbird_match(category, current_count, main_request_table, l
 
         counts_after_filter = get_clean_record_count(main_request_table, sf_cursor)
         mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS, (main_request_details['id'], main_request_details['ScheduleId'],
-                                                                       main_request_details['runNumber'], 'NA','Suppression', 'NA',
+                                                                       main_request_details['runNumber'], 'NA','Match', 'NA',
                                                                        filter_name, counts_before_filter,
                                                                        counts_after_filter, 0, 0))
         return counts_after_filter
