@@ -135,6 +135,9 @@ def load_input_source(type_of_request, source, main_request_details):
                                          f"group by {grouping_fields} having count(1)< {touch_count}) b where {join_fields}"
                     consumer_logger.info(f"Applying touch filter, executing query: {touch_filter_query}")
                     sf_cursor.execute(touch_filter_query)
+                # changes for the Do_InputSource for delivered or resp
+                #if source_sub_type in ('D','R'):
+                #   sf_source_name = sf_source_name_generator(sf_source_name ,input_data_dict,touch_filter=False)
                 sf_cursor.execute(f"create or replace transient table "
                                   f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{source_table} "
                                   f"as select {distinct_filter} {main_request_details['FilterMatchFields']} from {temp_source_table} ")
@@ -1121,8 +1124,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         mysql_cursor = mysql_conn.cursor(dictionary=True)
         mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
         gm_configured_isps = mysql_cursor.fetchone()['isps']
-        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'others' where isp not in ({gm_configured_isps})")
-        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'Hotmail' where isp in ({HOTMAIL_ISPS})")
+        sf_cursor.execute(f"update {temp_input_source_table} set isp = 'Others' where isp not in ({gm_configured_isps})")
 
         mysql_cursor.execute(FETCH_SUPP_REQUEST_INITIAL_COUNT,(schedule_id,run_number))
         counts_before_filter = mysql_cursor.fetchone()['Total_Count']
@@ -1255,7 +1257,7 @@ def isps_filtration(current_count, main_request_table, isps, logger, mysql_curso
         sf_cursor = sf_conn.cursor()
         isps_filter = str(isps).replace(",", "','")
         isps_filtration_query = f"update {main_request_table} set do_suppressionStatus = 'ISP Filter' where " \
-                                f"split_part(email_id,'@',-1) not in ('{isps_filter}') and do_suppressionStatus='CLEAN'"
+                                f"isp not in ('{isps_filter}') and do_suppressionStatus='CLEAN'"
         logger.info(f"Suppressing non-configured isps records in {main_request_table}. Executing Query: {isps_filtration_query}")
         sf_cursor.execute(isps_filtration_query)
         counts_after_filter = counts_before_filter - sf_cursor.rowcount
@@ -1664,7 +1666,7 @@ def load_match_or_filter_file_source(type_of_request,file_source_filter_list,mai
         os.makedirs(f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
         os.makedirs(f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",exist_ok=True)
         temp_files_path = f"{SUPP_FILE_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/"
-        source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}_{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
+        source_table = f"{MAIN_INPUT_SOURCE_TABLE_PREFIX}{type_of_request}_{str(main_request_details['id'])}_{str(file_source['sourceId'])}_{str(file_source_index)}"
         consumer_logger = create_logger(base_logger_name=f"{type_of_request}_{file_source['sourceId']}_{str(file_source_index)}",log_file_path=f"{SUPP_LOG_PATH}/{str(main_request_details['id'])}/{type_of_request}/{str(file_source['sourceId'])}_{str(file_source_index)}/",log_to_stdout=False)
         logger.info(f"Acquiring mysql connection...")
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
@@ -2071,7 +2073,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['filterName'] = supp_key
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
             for supp_table in supp_tables:
-                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 logger.info(f"{supp_table} suppression done successfully...")
@@ -2088,7 +2090,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
             res['filterName'] = supp_key
             for supp_table in supp_tables:
-                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  lower(trim(a.EMAIL_ID)) = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = b.email AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 logger.info(f"{supp_table} suppression done successfully...")
@@ -2096,9 +2098,12 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
                     sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{supp_key}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f"Executing query:  {sf_update_table_query}")
                     sf_cursor.execute(sf_update_table_query)
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    logger.info(f" Executing query : {sf_update_temp_table_query}")
+                    sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
                 elif supp_key == "IEP Unsubs":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) ) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326 ) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
@@ -2145,7 +2150,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
                 sf_cursor.execute(sf_update_table_query)
                 logger.info(f"{supp_table} suppression done successfully...")
                 if supp_key == "Account level Conversions":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.profileid,d.account_name from INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.PROFILE_ID=b.profileid and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
@@ -2632,6 +2637,9 @@ def populate_stats_table(main_request_details, main_request_table, logger, mysql
         grouping_columns = str(main_request_details['groupingColumns'])
         sf_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIGS)
         sf_cursor = sf_conn.cursor(DictCursor)
+        logger.info("Updating Hotmail ISPS to Hotmail....")
+        logger.info(f"Executing query :: update {main_request_table} set isp = 'Hotmail' where isp in ({HOTMAIL_ISPS})")
+        sf_cursor.execute(f"update {main_request_table} set isp = 'Hotmail' where isp in ({HOTMAIL_ISPS})")
         sf_cursor.execute(f"alter table {main_request_table} add column do_originalMatchStatus varchar default 'NON_MATCH'")
         sf_query = f"update {main_request_table} set do_originalMatchStatus = DO_MATCHSTATUS, DO_MATCHSTATUS =  " \
                    f"case when STARTSWITH(DO_MATCHSTATUS,'By Attribute') then 'By_Field' else  " \
@@ -2845,3 +2853,36 @@ class CustomError(Exception):
             super().__init__(self.message)
 
 
+
+def sf_source_name_generator(source_name ,input_data_dict,touch_filter=False):
+    new_name = ""
+    # starting Category name generation
+    if  "Delivered".lower() in source_name.lower():
+        new_name += "Delivered_"
+    elif "Responders".lower() in source_name.lower():
+        if "Genuine".lower() in source_name.lower():
+            new_name += "Resp_Genuine_"
+        else:
+            new_name += "Resp_All_"
+    #elif "Profile".lower() in source_name.lower():
+    #	new_name += "Profile_"
+    #else:
+    #	new_name += f"{source_name}_"
+    # Filter conditions addition
+    for filter in input_data_dict:
+        if filter['fieldName'] == "dateRange":
+            if filter['dataType'] == "date" and (filter['searchType'] == ">=" or filter['searchType'] == "between"):
+                if filter['searchType'] == ">=" :
+                    if filter['value'] == 'T':
+                        new_name += "TillDate"
+                    else:
+                        new_name  += f"L{filter['value']}Days"
+                elif filter['searchType'] == "between":
+                    if filter['dateRangeType'] == 'C':
+                        new_name += f"{str(filter['value']).split(',')[0]}_To_{str(filter['value']).split(',')[1]}"
+                    elif filter['dateRangeType'] == 'R':
+                        new_name += f"L{str(filter['value']).split(',')[0]}Days_To_L{str(filter['value']).split(',')[1]}Days"
+            #if touch_filter:
+            #	new_name += f"TC_{filter['touchCount']}"
+        break
+    return new_name

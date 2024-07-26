@@ -53,7 +53,7 @@ LOG_FILES_REMOVE_LIMIT = 30
 
 MAIL_HTML_FILE = FILE_PATH + "mail_{}_{}.ftl"
 
-THREAD_COUNT = 4  # thread count
+THREAD_COUNT = 10  # thread count
 
 skype_configurations = {
     'url': 'http://zds-prod-ext-greenapp1-vip.bo3.e-dialog.com/sendSkypeAlerts/index.php?key=',
