@@ -10,7 +10,7 @@ echo "Data Source Request Picker Service Started :: `date`"
 
 while true ; do
 
-export pythonPath=$PYTHON_PATH/site-packages
+export PYTHONPATH=$PYTHON_PATH/site-packages
 $PYTHON_PATH/python37/bin/python3.7 $basepath/datasourceRequestScheduler.py
 sleep 20
 done

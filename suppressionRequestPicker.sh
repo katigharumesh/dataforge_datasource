@@ -1,7 +1,7 @@
 #!/bin/sh
 
 basepath='/gmservices/DATAOPS/SUPPRESSION_REQUEST'
-PYTHON_PATH='/home/zxdev/lptServices/PYTHON_FILES/'
+PYTHON_PATH='/gmservices/DATAOPS/PYTHON_FILES/'
 pidPath=$basepath/pidfile.txt
 
 if [ ! -f $pidPath ]; then

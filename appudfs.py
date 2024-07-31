@@ -218,14 +218,14 @@ def create_main_datasource(sources_loaded, main_request_details, logger):
         main_datasource_query = f"create or replace transient table {SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_datasource_table} as select distinct {filter_match_fields} from {sf_data_source}"
         logger.info(f"Main datasource preparation query: {main_datasource_query}")
         sf_cursor.execute(main_datasource_query)
+        mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
+        mysql_cursor = mysql_conn.cursor(dictionary=True)
         if 'email_id' in str(filter_match_fields).lower().split(','):
             sf_cursor.execute(f"update {temp_datasource_table} set email_id=lower(trim(email_id))")
             isps_filter = str(isps).replace(",","','")
             logger.info("ISP filtration process initiated.")
             sf_cursor.execute(f"alter table {temp_datasource_table} add column if not exists isp varchar")
             sf_cursor.execute(f"update {temp_datasource_table} set isp=split_part(email_id,'@',-1)")
-            mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
-            mysql_cursor = mysql_conn.cursor(dictionary=True)
             mysql_cursor.execute(FETCH_GM_CONFIGURED_ISPS)
             gm_configured_isps = mysql_cursor.fetchone()['isps']
             sf_cursor.execute(
@@ -799,7 +799,7 @@ def process_single_file(mapping_id, temp_files_path, run_number, source_obj, ful
             file_details_dict['error_msg'] = ''
         return file_details_dict
     except Exception as e:
-        consumer_logger.error(f"Exception occurred while processing file {fully_qualified_file}. {str(e)}" + + str(traceback.format_exc()))
+        consumer_logger.error(f"Exception occurred while processing file {fully_qualified_file}. {str(e)}" + str(traceback.format_exc()))
         raise Exception(e)
 
 def update_next_schedule_due(type_of_request, request_id, run_number, logger, request_status='E'):
@@ -812,7 +812,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
             column_to_fetch = "datasourceId"
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor()
-        mysqlcur.execute("set time_zone='UTC';")
+        mysqlcur.execute("set time_zone='+00:00';")
         requestquery = f"select id,{column_to_fetch},runnumber,recurrenceType,startDate,endDate,excludeDates," \
                 f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {schedule_table} where status='I' " \
                 f"and nextScheduleDue<now() and {column_to_fetch}={request_id} and runnumber={run_number} "
@@ -1166,7 +1166,7 @@ def create_main_input_source(sources_loaded, main_request_details, filter_detail
         sf_cursor.execute(f"update {temp_input_source_table} set list_id = '000000'  where list_id is null or "
                           f"cast(list_id as string)='NULL' or cast(list_id as string)='null' or cast(list_id as string)='' ")
         if remove_duplicates == 0:
-            source_join_fields = 'and a.do_inputSourceMappingId = b.do_inputSourceMappingId'
+            source_join_fields = 'and a.do_inputSource = b.do_inputSource'
             dedup_field = ',do_inputSource'
         else:
             source_join_fields = ''
@@ -1876,33 +1876,36 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
 
         #Conversions suppression
 
-        if str(channel).upper() != 'INFS':
-            def conversions_supp(filter_type, associate_offer_id, current_count):
-                counts_before_filter = current_count
-                if str(channel).upper() == 'GREEN':
-                    sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                            f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
-                                            f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
-                                            f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
-                                            f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
-                                            f" do_suppressionStatus_{offer_id} = 'CLEAN'"
-                elif str(channel).upper() == 'APPTNESS':
-                    sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
-                                            f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
-                                            f"offer_id='{associate_offer_id}' and upper(channel)='APPTNESS' and CONVERSIONDATE>=current_date() - interval '6 months') " \
-                                            f"b where cast(a.profile_id as varchar)=b.profileid and do_matchStatus != 'NON_MATCH' and " \
-                                            f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
-                                            f" do_suppressionStatus_{offer_id} = 'CLEAN'"
-                offer_logger.info(f"Executing query:  {sf_update_table_query}")
-                sf_cursor.execute(sf_update_table_query)
-                counts_after_filter = get_offer_record_count(main_request_table, sf_cursor, offer_id)
-                offer_logger.info(f"Executing: {INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0)}")
-                mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
-                                     (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
-                                      f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0))
-                return counts_after_filter
+        def conversions_supp(filter_type, associate_offer_id, current_count):
+            counts_before_filter = current_count
+            if str(channel).upper() == 'GREEN':
+                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                        f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                        f"offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                        f"b where a.profile_id=b.profileid and do_matchStatus != 'NON_MATCH' and " \
+                                        f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                        f" do_suppressionStatus_{offer_id} = 'CLEAN'"
+            elif str(channel).upper() == 'APPTNESS':
+                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' " \
+                                        f"from (select profileid from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF where " \
+                                        f"offer_id='{associate_offer_id}' and upper(channel)='APPTNESS' and CONVERSIONDATE>=current_date() - interval '6 months') " \
+                                        f"b where cast(a.profile_id as varchar)=b.profileid and do_matchStatus != 'NON_MATCH' and " \
+                                        f"do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and" \
+                                        f" do_suppressionStatus_{offer_id} = 'CLEAN'"
+            # changes to make the INFS conversions
+            elif str(channel).upper() == 'INFS':
+                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' FROM (select c.email,d.ACCOUNT_NAME from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF c left join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.LISTID=d.LISTID where upper(c.channel)='ORANGE' and offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') b WHERE lower(trim(a.email_id))=lower(trim(b.email)) and a.ACCOUNT_NAME=b.ACCOUNT_NAME AND  do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and   do_suppressionStatus_{offer_id} = 'CLEAN' "
 
-            current_count = conversions_supp("MainOffer_Cake_Converters", offer_id, current_count)
+            offer_logger.info(f"Executing query:  {sf_update_table_query}")
+            sf_cursor.execute(sf_update_table_query)
+            counts_after_filter = get_offer_record_count(main_request_table, sf_cursor, offer_id)
+            offer_logger.info(f"Executing: {INSERT_SUPPRESSION_MATCH_DETAILED_STATS,(request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0)}")
+            mysql_cursor.execute(INSERT_SUPPRESSION_MATCH_DETAILED_STATS,
+                                 (request_id, schedule_id, run_number, offer_id, f'{filter_type}', associate_offer_id,
+                                  f'{associate_offer_id}', counts_before_filter, counts_after_filter, 0, 0))
+            return counts_after_filter
+
+        current_count = conversions_supp("MainOffer_Cake_Converters", offer_id, current_count)
 
         #Sub offers suppression
 

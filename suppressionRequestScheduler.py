@@ -46,7 +46,7 @@ class RequestPicker:
                           f"({request[1]}, {request[0]}, {request[2]}+1, DATE(NOW()), NOW(), NOW())"
             if updateflag:
                 logger.info(f"Insert query :: {insertquery}")
-                mysqlcur.execute("SET time_zone = 'UTC';")
+                mysqlcur.execute("SET time_zone = '+00:00';")
                 mysqlcur.execute(insertquery)
                 mysqlcon.commit()
         except Exception as e:
@@ -67,7 +67,7 @@ class RequestPicker:
             mysqlcur = mysqlcon.cursor()
             updatequery = f"UPDATE {SUPP_SCHEDULE_TABLE} SET status='I', runnumber=runnumber+1 WHERE ID = {id}"
             logger.info(f"[Thread-{thread_number}] Update query :: {updatequery}")
-            mysqlcur.execute("SET time_zone = 'UTC';")
+            mysqlcur.execute("SET time_zone = '+00:00';")
             mysqlcur.execute(updatequery)
             mysqlcon.commit()
             updateflag = True
@@ -91,7 +91,7 @@ class RequestPicker:
             requestquery = f"SELECT a.id, a.requestId, a.runnumber, IF(a.nextScheduleDue IS NULL, NOW(), a.nextscheduleDue) AS nextscheduleDue, a.notificationMails, a.sendNotificationsFor, a.type, IF(a.startDate IS NULL, DATE(NOW()), a.startDate) AS startDate, IF(a.endDate IS NULL, DATE(NOW()), a.endDate) AS " \
                            f"endDate FROM {SUPP_SCHEDULE_TABLE} a JOIN {SUPP_REQUEST_TABLE} b ON a.requestId = b.id WHERE a.status = 'W' AND b.isActive = 1 AND IF(a.nextScheduleDue IS NULL, NOW(), a.nextscheduleDue) <= NOW() LIMIT {THREAD_COUNT}"
             logger.info(f"Request query ::{requestquery}")
-            mysqlcur.execute("SET time_zone = 'UTC'")
+            mysqlcur.execute("SET time_zone = '+00:00'")
             mysqlcur.execute(requestquery)
             requestList = mysqlcur.fetchall()
         except Exception as e:

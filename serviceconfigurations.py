@@ -44,7 +44,7 @@ import boto3
 
 # SCRIPT_PATH = r"D:\tmp\data_forge"
 # LOG_PATH = r"D:\tmp\data_forge\app_logs"
-SCRIPT_PATH = r"/gmservices/DATAOPS/DATASET"
+SCRIPT_PATH = r"/gmservices/DATAOPS/DATASET/"
 
 LOG_PATH = SCRIPT_PATH + "app_logs"
 FILE_PATH = "/gmserviceslogs/DATAOPS/DATASET/r_logs/"   # local file path - mount to download the temp files
