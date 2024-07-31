@@ -130,9 +130,9 @@ def load_input_source(type_of_request, source, main_request_details):
                     else:
                         fp_listids_table = FP_LISTIDS_SF_TABLE
                     if feed_type == 'F':
-                        feed_type_cond = f'and list_id in (select listid from {fp_listids_table})'
+                        feed_type_cond = f'and list_id in (select cast(listid as varchar) from {fp_listids_table})'
                     elif feed_type == 'T':
-                        feed_type_cond = f'and list_id not in (select listid from {fp_listids_table})'
+                        feed_type_cond = f'and list_id not in (select cast(listid as varchar) from {fp_listids_table})'
 
                 source_table_preparation_query = f"create or replace transient table " \
                                                  f"{SNOWFLAKE_CONFIGS['database']}.{SNOWFLAKE_CONFIGS['schema']}.{temp_source_table} " \
@@ -1894,7 +1894,7 @@ def offer_download_and_suppression(offer_id, main_request_details, filter_detail
                                         f" do_suppressionStatus_{offer_id} = 'CLEAN'"
             # changes to make the INFS conversions
             elif str(channel).upper() == 'INFS':
-                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' FROM (select c.email,d.ACCOUNT_NAME from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF c left join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.LISTID=d.LISTID where upper(c.channel)='ORANGE' and offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') b WHERE lower(trim(a.email_id))=lower(trim(b.email)) and a.ACCOUNT_NAME=b.ACCOUNT_NAME AND  do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and   do_suppressionStatus_{offer_id} = 'CLEAN' "
+                sf_update_table_query = f"update {main_request_table} a set do_suppressionStatus_{offer_id} = '{filter_type}' FROM (select c.email,d.ACCOUNT_NAME from {CAKE_CONVERTION_TABLES_SF_SCHEMA}.BUYER_CONVERSIONS_SF c left join {OTEAM_FP_LISTIDS_SF_TABLE} d on c.LISTID=d.LISTID where upper(c.channel)='ORANGE' and offer_id='{associate_offer_id}' and CONVERSIONDATE>=current_date() - interval '6 months') b WHERE lower(trim(a.email_id))=lower(trim(b.email)) and a.ACCOUNT_NAME=b.ACCOUNT_NAME AND  do_matchStatus != 'NON_MATCH' and do_suppressionStatus = 'CLEAN' and a.do_matchStatus_{offer_id} != 'NON_MATCH' and   do_suppressionStatus_{offer_id} = 'CLEAN' "
 
             offer_logger.info(f"Executing query:  {sf_update_table_query}")
             sf_cursor.execute(sf_update_table_query)
