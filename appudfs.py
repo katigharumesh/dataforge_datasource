@@ -2103,7 +2103,7 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['filterName'] = supp_key
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
             for supp_table in supp_tables:
-                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 logger.info(f"{supp_table} suppression done successfully...")
@@ -2120,30 +2120,30 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
             res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
             res['filterName'] = supp_key
             for supp_table in supp_tables:
-                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = b.email AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.EMAIL_ID = lower(trim(b.email)) AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
                 logger.info(f"Executing query:  {sf_update_table_query}")
                 sf_cursor.execute(sf_update_table_query)
                 logger.info(f"{supp_table} suppression done successfully...")
                 if supp_key == "Account Level Unsubs":
-                    sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{supp_key}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=b.email AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_table_query = f"UPDATE {source_table} a SET a.do_suppressionStatus = '{supp_key}' FROM INFS_LPT.unsub_details_oteam b where iff(a.list_id='2','3188',a.list_id)=iff(b.listid='2','3188',b.listid) AND a.EMAIL_ID=lower(trim(b.email)) AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f"Executing query:  {sf_update_table_query}")
                     sf_cursor.execute(sf_update_table_query)
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.unsub_details_oteam c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=lower(trim(b.email)) and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
                 elif supp_key == "IEP Unsubs":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326 ) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from (select email,listid from INFS_LPT.EMAIL_REPLIES_TRANSACTIONAL a join INFS_LPT.GM_SUBID_DOMAIN_DETAILS b on lower(trim(a.domain))=lower(trim(b.domain)) where a.id > 17218326 ) c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid ) b where a.account_name=b.account_name and a.EMAIL_ID=lower(trim(b.email)) and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
                 elif supp_key == "Orange Account Unsubs":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.INFS_UNSUBS_ACCOUNT_WISE c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.account_name=d.account_name ) b where a.account_name=b.account_name and a.EMAIL_ID=lower(trim(b.email)) and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table}  account level suppression done successfully...")
                 elif supp_key == "Static Account level INFS Unsubs":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=b.email and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.email,d.account_name from INFS_LPT.infs_account_level_static_suppression_data c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.EMAIL_ID=lower(trim(b.email)) and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
                     logger.info(f" Executing query : {sf_update_temp_table_query}")
                     sf_cursor.execute(sf_update_temp_table_query)
                     logger.info(f"{supp_table} account level suppression done successfully...")
