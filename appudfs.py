@@ -812,7 +812,7 @@ def update_next_schedule_due(type_of_request, request_id, run_number, logger, re
             column_to_fetch = "datasourceId"
         mysql_conn = mysql.connector.connect(**MYSQL_CONFIGS)
         mysqlcur = mysql_conn.cursor()
-        mysqlcur.execute("set time_zone='+00:00';")
+        mysqlcur.execute("set time_zone='UTC';")
         requestquery = f"select id,{column_to_fetch},runnumber,recurrenceType,startDate,endDate,excludeDates," \
                 f"date(nextscheduleDue) as nextscheduledate,sendAt,timezone,sendon,dayOfMonth from {schedule_table} where status='I' " \
                 f"and nextScheduleDue<now() and {column_to_fetch}={request_id} and runnumber={run_number} "
