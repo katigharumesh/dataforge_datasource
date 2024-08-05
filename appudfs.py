@@ -2166,27 +2166,27 @@ def apply_infs_feed_level_suppression(source_table, result_breakdown_flag, logge
         sf_cursor.execute(sf_update_temp_table_query)
         res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
         result.append(res)
-        for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
-            supp_key = list(supp_dict.keys())[0]
-            supp_tables = supp_dict[supp_key]
-            res = {}
-            res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
-                'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
-            res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
-            res['filterName'] = supp_key
-            for supp_table in supp_tables:
-                sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.PROFILE_ID = b.profileid AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
-                logger.info(f"Executing query:  {sf_update_table_query}")
-                sf_cursor.execute(sf_update_table_query)
-                logger.info(f"{supp_table} suppression done successfully...")
-                if supp_key == "Account level Conversions":
-                    sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.profileid,d.account_name from INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.PROFILE_ID=b.profileid and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
-                    logger.info(f" Executing query : {sf_update_temp_table_query}")
-                    sf_cursor.execute(sf_update_temp_table_query)
-                    logger.info(f"{supp_table} account level suppression done successfully...")
-            res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
-            result.append(res)
-            logger.info(f"{supp_key} suppression done successfully...")
+        # for supp_dict in INFS_FEED_LEVEL_SUPP_TABLES['listid_profileid']:
+        #     supp_key = list(supp_dict.keys())[0]
+        #     supp_tables = supp_dict[supp_key]
+        #     res = {}
+        #     res['offerId'], res['filterType'], res['associateOfferId'], res['downloadCount'], res[
+        #         'insertCount'] = 'NA', 'Suppression', 'NA', '0', '0'
+        #     res['countsBeforeFilter'] = get_record_count(source_table, sf_cursor)
+        #     res['filterName'] = supp_key
+        #     for supp_table in supp_tables:
+        #         sf_update_table_query = f"UPDATE {source_table}  a  SET  a.do_suppressionStatus = '{supp_key}' FROM ({supp_table}) b WHERE  a.PROFILE_ID = b.profileid AND a.LIST_ID = b.listid AND a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH' "
+        #         logger.info(f"Executing query:  {sf_update_table_query}")
+        #         sf_cursor.execute(sf_update_table_query)
+        #         logger.info(f"{supp_table} suppression done successfully...")
+        #         if supp_key == "Account level Conversions":
+        #             sf_update_temp_table_query = f"update {source_table} a set a.do_suppressionStatus = '{supp_key}' from (select c.profileid,d.account_name from INFS_LPT.APT_CUSTOM_CONVERSIONS_DATA_OTEAM c join INFS_LPT.INFS_ORANGE_MAPPING_TABLE d on c.listid=d.listid) b where a.account_name=b.account_name and a.PROFILE_ID=b.profileid and a.do_suppressionStatus = 'CLEAN' and a.do_matchStatus != 'NON_MATCH'"
+        #             logger.info(f" Executing query : {sf_update_temp_table_query}")
+        #             sf_cursor.execute(sf_update_temp_table_query)
+        #             logger.info(f"{supp_table} account level suppression done successfully...")
+        #     res['countsAfterFilter'] = get_record_count(source_table, sf_cursor)
+        #     result.append(res)
+        #     logger.info(f"{supp_key} suppression done successfully...")
 
         current_count = get_record_count(f"{source_table}", sf_cursor)
         logger.info(f"the result breakdown flag is : {result_breakdown_flag}")
